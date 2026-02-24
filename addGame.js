@@ -8,16 +8,15 @@ const submitBtn = document.getElementById('submit-btn');
 const authGuard = document.getElementById('auth-guard');
 
 const SPECIAL_PLAYERS = new Set(['4th Man', '5th Man']);
+let previousPlayedByPlayer = new Map();
 
 function showMessage(text, isError = false) {
   msg.textContent = text;
   msg.className = isError ? 'message error' : 'message';
 }
 
-function nowLocalDateTimeValue() {
-  const d = new Date();
-  const tzOffset = d.getTimezoneOffset() * 60000;
-  return new Date(d - tzOffset).toISOString().slice(0, 16);
+function todayLocalDateValue() {
+  return new Date().toISOString().slice(0, 10);
 }
 
 function clampToZero(value) {
@@ -55,20 +54,24 @@ async function checkAuth() {
 }
 
 function rowTemplate(player) {
+  const played = previousPlayedByPlayer.get(player.id) ?? true;
   return `
     <div class="player-row" data-player-id="${player.id}">
       <div>${player.name}</div>
-      <div class="number-stepper">
+      <div class="number-stepper compact-stepper">
         <button type="button" class="stepper-btn" data-delta="-1">-</button>
         <input type="number" min="0" value="0" class="goals" />
         <button type="button" class="stepper-btn" data-delta="1">+</button>
       </div>
-      <div class="number-stepper">
+      <div class="number-stepper compact-stepper">
         <button type="button" class="stepper-btn" data-delta="-1">-</button>
         <input type="number" min="0" value="0" class="assists" />
         <button type="button" class="stepper-btn" data-delta="1">+</button>
       </div>
-      <label><input type="checkbox" class="goalie-start" /> GS</label>
+      <div class="player-flags">
+        <label><input type="checkbox" class="played" ${played ? 'checked' : ''} /> Played</label>
+        <label><input type="checkbox" class="goalie-start" /> GS</label>
+      </div>
     </div>
   `;
 }
@@ -79,17 +82,45 @@ function renderPlayers(players) {
 
   playersWrap.innerHTML = `
     <div class="player-row head">
-      <div>Player</div><div>G</div><div>A</div><div>Goalie Start</div>
+      <div>Player</div><div>G</div><div>A</div><div>Flags</div>
     </div>
     ${mainPlayers.map((p) => rowTemplate(p)).join('')}
   `;
 
   specialPlayersWrap.innerHTML = `
     <div class="player-row head">
-      <div>Player</div><div>G</div><div>A</div><div>Goalie Start</div>
+      <div>Player</div><div>G</div><div>A</div><div>Flags</div>
     </div>
     ${specialPlayers.map((p) => rowTemplate(p)).join('')}
   `;
+}
+
+async function loadPreviousPlayedMap() {
+  const { data: latestGame, error: latestError } = await supabase
+    .from('games')
+    .select('id')
+    .order('game_date', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (latestError || !latestGame) return;
+
+  const { data: lines, error: linesError } = await supabase
+    .from('player_game_stats')
+    .select('player_id, played_in_game')
+    .eq('game_id', latestGame.id);
+
+  if (linesError) {
+    const { data: fallbackLines, error: fallbackErr } = await supabase
+      .from('player_game_stats')
+      .select('player_id')
+      .eq('game_id', latestGame.id);
+    if (fallbackErr) return;
+    previousPlayedByPlayer = new Map(fallbackLines.map((line) => [line.player_id, true]));
+    return;
+  }
+
+  previousPlayedByPlayer = new Map(lines.map((line) => [line.player_id, line.played_in_game !== false]));
 }
 
 async function loadPlayers() {
@@ -115,15 +146,17 @@ function buildPlayerLines(gameId) {
       const goals = clampToZero(row.querySelector('.goals').value);
       const assists = clampToZero(row.querySelector('.assists').value);
       const started = row.querySelector('.goalie-start').checked;
+      const played = row.querySelector('.played').checked;
       return {
         game_id: gameId,
         player_id: Number(row.dataset.playerId),
         goals,
         assists,
-        started_in_goal: started
+        started_in_goal: started,
+        played_in_game: played
       };
     })
-    .filter((r) => r.goals > 0 || r.assists > 0 || r.started_in_goal);
+    .filter((r) => r.played_in_game || r.goals > 0 || r.assists > 0 || r.started_in_goal);
 }
 
 function validate() {
@@ -137,7 +170,7 @@ function validate() {
   }
 
   return {
-    game_date: new Date(date).toISOString(),
+    game_date: new Date(`${date}T12:00:00`).toISOString(),
     result,
     goals_for: gf,
     goals_against: ga,
@@ -179,9 +212,10 @@ form.addEventListener('submit', async (event) => {
 });
 
 (async function init() {
-  document.getElementById('game-date').value = nowLocalDateTimeValue();
+  document.getElementById('game-date').value = todayLocalDateValue();
   attachSteppers(form);
   try {
+    await loadPreviousPlayedMap();
     await loadPlayers();
     await checkAuth();
   } catch (err) {

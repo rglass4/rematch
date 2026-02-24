@@ -14,7 +14,6 @@
           <input id="email-input" type="email" placeholder="you@email.com" />
           <input id="password-input" type="password" placeholder="Password" />
           <button id="login-btn" type="button">Login</button>
-          <button id="signup-btn" type="button" class="secondary">Sign Up</button>
           <button id="logout-btn" type="button" class="secondary" hidden>Logout</button>
           <a class="button-link" href="./add-game.html">Add Game</a>
         </div>
@@ -25,17 +24,10 @@
 
       <section class="card">
         <h2>Filters</h2>
-        <div class="filters-row">
+        <div class="filters-row single-filter-row">
           <label>
-            Leaderboard Mode
-            <select id="leaderboard-mode">
-              <option value="total">Total</option>
-              <option value="date">By Date</option>
-            </select>
-          </label>
-          <label>
-            Date
-            <input id="stats-date-filter" type="date" />
+            View
+            <select id="stats-view-filter"></select>
           </label>
         </div>
       </section>
@@ -90,7 +82,6 @@
 
       <section class="card">
         <h2>Games</h2>
-        <p class="small">Pick a date in the filter above to view game results for that date.</p>
         <table>
           <thead>
             <tr>
@@ -98,6 +89,7 @@
               <th>Result</th>
               <th>Score</th>
               <th>OT</th>
+              <th id="actions-head" hidden>Actions</th>
             </tr>
           </thead>
           <tbody id="games-body"></tbody>

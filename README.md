@@ -64,6 +64,7 @@ create table if not exists player_game_stats (
   goals integer not null default 0 check (goals >= 0),
   assists integer not null default 0 check (assists >= 0),
   started_in_goal boolean not null default false,
+  played_in_game boolean not null default true,
   created_at timestamptz not null default now(),
   unique (game_id, player_id)
 );
@@ -111,6 +112,18 @@ on player_game_stats for insert
 to authenticated
 with check (true);
 
+-- Authenticated updates/deletes for game maintenance
+create policy "authenticated can update games"
+on games for update
+to authenticated
+using (true)
+with check (true);
+
+create policy "authenticated can delete games"
+on games for delete
+to authenticated
+using (true);
+
 -- Optional: authenticated can add players
 create policy "authenticated can insert players"
 on players for insert
@@ -148,6 +161,6 @@ Then open `http://localhost:8080`.
 
 ## Notes
 
-- Login and Sign Up buttons use Supabase email/password authentication.
+- Login and Logout buttons use Supabase email/password authentication.
 - `add-game.html` requires authenticated session before submit.
 - Player rows are loaded from the `players` table, so seeded players automatically appear on add/edit flows.

@@ -1,14 +1,13 @@
-import { supabase, signInWithPassword, signUpWithPassword, signOut, getSession } from './supabaseClient.js';
+import { supabase, signInWithPassword, signOut, getSession } from './supabaseClient.js';
 
 const statusEl = document.getElementById('auth-status');
 const emailInput = document.getElementById('email-input');
 const passwordInput = document.getElementById('password-input');
 const loginBtn = document.getElementById('login-btn');
-const signupBtn = document.getElementById('signup-btn');
 const logoutBtn = document.getElementById('logout-btn');
 const authMsg = document.getElementById('auth-message');
-const leaderboardMode = document.getElementById('leaderboard-mode');
-const statsDateFilter = document.getElementById('stats-date-filter');
+const statsViewFilter = document.getElementById('stats-view-filter');
+const actionsHead = document.getElementById('actions-head');
 
 const summaryIds = {
   games: document.getElementById('total-games'),
@@ -27,6 +26,7 @@ const SPECIAL_PLAYERS = new Set(['4th Man', '5th Man']);
 let allGames = [];
 let allLines = [];
 let allPlayers = [];
+let isAuthed = false;
 
 function showAuthMessage(text, isError = false) {
   authMsg.textContent = text;
@@ -38,27 +38,28 @@ function dateOnlyString(dateInput) {
 }
 
 function formatGameDate(dateInput) {
-  return new Date(dateInput).toLocaleString();
+  return new Date(dateInput).toLocaleDateString();
 }
 
 async function refreshAuthUi() {
   try {
     const session = await getSession();
+    isAuthed = Boolean(session);
     if (session) {
       statusEl.textContent = `Logged in: ${session.user.email}`;
       logoutBtn.hidden = false;
       loginBtn.hidden = true;
-      signupBtn.hidden = true;
       emailInput.hidden = true;
       passwordInput.hidden = true;
     } else {
       statusEl.textContent = 'Not logged in';
       logoutBtn.hidden = true;
       loginBtn.hidden = false;
-      signupBtn.hidden = false;
       emailInput.hidden = false;
       passwordInput.hidden = false;
     }
+    actionsHead.hidden = !isAuthed;
+    applyFilters();
   } catch {
     statusEl.textContent = 'Auth status unavailable';
   }
@@ -91,7 +92,7 @@ function calcPlayerTotals(players, lines) {
   for (const line of lines) {
     const t = map.get(line.player_id);
     if (!t) continue;
-    t.gp += 1;
+    if (line.played_in_game !== false) t.gp += 1;
     t.goals += line.goals;
     t.assists += line.assists;
     t.points = t.goals + t.assists;
@@ -126,35 +127,49 @@ function renderLeaderboard(tableBody, rows) {
   }
 }
 
-function renderGames(games, selectedDate) {
+function getGamesForSelection() {
+  const selectedValue = statsViewFilter.value;
+  if (!selectedValue || selectedValue === 'total') return [...allGames];
+  return allGames.filter((g) => dateOnlyString(g.game_date) === selectedValue);
+}
+
+function renderGames(games) {
   gamesBody.innerHTML = '';
-  if (!selectedDate) return;
 
-  const filteredGames = games
-    .filter((g) => dateOnlyString(g.game_date) === selectedDate)
-    .sort((a, b) => new Date(b.game_date) - new Date(a.game_date));
-
-  for (const game of filteredGames) {
+  const sortedGames = [...games].sort((a, b) => new Date(b.game_date) - new Date(a.game_date));
+  for (const game of sortedGames) {
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td>${formatGameDate(game.game_date)}</td>
       <td>${game.result}</td>
       <td>${game.goals_for}-${game.goals_against}</td>
       <td>${game.overtime ? 'Yes' : 'No'}</td>
+      ${isAuthed ? `<td class="game-actions">
+        <button type="button" class="secondary game-edit" data-game-id="${game.id}">Edit</button>
+        <button type="button" class="secondary game-delete" data-game-id="${game.id}">Delete</button>
+      </td>` : ''}
     `;
     gamesBody.appendChild(tr);
   }
 }
 
-function applyFilters() {
-  const mode = leaderboardMode.value;
-  const selectedDate = statsDateFilter.value;
-
-  let visibleGames = allGames;
-  if (mode === 'date' && selectedDate) {
-    visibleGames = allGames.filter((g) => dateOnlyString(g.game_date) === selectedDate);
+function populateViewFilter() {
+  const uniqueDates = [...new Set(allGames.map((g) => dateOnlyString(g.game_date)))].sort((a, b) => b.localeCompare(a));
+  const options = [
+    '<option value="total">Total</option>',
+    ...uniqueDates.map((date) => `<option value="${date}">${date}</option>`)
+  ];
+  const selectedBefore = statsViewFilter.value;
+  statsViewFilter.innerHTML = options.join('');
+  if (selectedBefore && options.some((opt) => opt.includes(`value="${selectedBefore}"`))) {
+    statsViewFilter.value = selectedBefore;
   }
+}
 
+function applyFilters() {
+  if (!statsViewFilter) return;
+
+  const visibleGames = getGamesForSelection();
   const visibleGameIds = new Set(visibleGames.map((g) => g.id));
   const visibleLines = allLines.filter((line) => visibleGameIds.has(line.game_id));
 
@@ -166,7 +181,7 @@ function applyFilters() {
 
   renderLeaderboard(leaderboardBody, mainPlayers);
   renderLeaderboard(specialLeaderboardBody, specialPlayers);
-  renderGames(allGames, selectedDate);
+  renderGames(visibleGames);
 }
 
 async function loadStats() {
@@ -184,11 +199,70 @@ async function loadStats() {
   allGames = games;
   allLines = lines;
   allPlayers = players;
+  populateViewFilter();
   applyFilters();
 }
 
-leaderboardMode?.addEventListener('change', applyFilters);
-statsDateFilter?.addEventListener('change', applyFilters);
+async function deleteGame(gameId) {
+  const confirmed = window.confirm('Delete this game?');
+  if (!confirmed) return;
+
+  const { error } = await supabase.from('games').delete().eq('id', gameId);
+  if (error) {
+    showAuthMessage(error.message, true);
+    return;
+  }
+
+  showAuthMessage('Game deleted.');
+  await loadStats();
+}
+
+async function editGame(gameId) {
+  const game = allGames.find((g) => String(g.id) === String(gameId));
+  if (!game) return;
+
+  const date = window.prompt('Date (YYYY-MM-DD)', dateOnlyString(game.game_date));
+  if (!date) return;
+  const result = window.prompt('Result (W or L)', game.result);
+  if (!result || !['W', 'L'].includes(result.toUpperCase())) return;
+  const goalsFor = Number(window.prompt('Goals For', String(game.goals_for)));
+  const goalsAgainst = Number(window.prompt('Goals Against', String(game.goals_against)));
+  const overtime = window.confirm('Overtime game? OK = Yes, Cancel = No');
+
+  const { error } = await supabase
+    .from('games')
+    .update({
+      game_date: new Date(`${date}T12:00:00`).toISOString(),
+      result: result.toUpperCase(),
+      goals_for: Number.isFinite(goalsFor) ? Math.max(0, goalsFor) : game.goals_for,
+      goals_against: Number.isFinite(goalsAgainst) ? Math.max(0, goalsAgainst) : game.goals_against,
+      overtime
+    })
+    .eq('id', gameId);
+
+  if (error) {
+    showAuthMessage(error.message, true);
+    return;
+  }
+
+  showAuthMessage('Game updated.');
+  await loadStats();
+}
+
+statsViewFilter?.addEventListener('change', applyFilters);
+
+gamesBody?.addEventListener('click', async (event) => {
+  const deleteBtn = event.target.closest('.game-delete');
+  if (deleteBtn) {
+    await deleteGame(deleteBtn.dataset.gameId);
+    return;
+  }
+
+  const editBtn = event.target.closest('.game-edit');
+  if (editBtn) {
+    await editGame(editBtn.dataset.gameId);
+  }
+});
 
 loginBtn?.addEventListener('click', async () => {
   const email = emailInput.value.trim();
@@ -206,23 +280,6 @@ loginBtn?.addEventListener('click', async () => {
 
   showAuthMessage('Logged in.');
   refreshAuthUi();
-});
-
-signupBtn?.addEventListener('click', async () => {
-  const email = emailInput.value.trim();
-  const password = passwordInput.value;
-  if (!email || !password) {
-    showAuthMessage('Enter both email and password to sign up.', true);
-    return;
-  }
-
-  const { error } = await signUpWithPassword(email, password);
-  if (error) {
-    showAuthMessage(error.message, true);
-    return;
-  }
-
-  showAuthMessage('Sign-up successful. You can now log in.');
 });
 
 logoutBtn?.addEventListener('click', async () => {
