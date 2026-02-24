@@ -17,7 +17,7 @@ Simple static website for tracking Rematch game stats, designed for **GitHub Pag
 
 1. Create a new Supabase project.
 2. Open **SQL Editor** and run the SQL below.
-3. In **Authentication → Providers**, keep Email enabled (magic link).
+3. In **Authentication → Providers**, enable **Email** and allow email/password sign-in.
 4. In **Project Settings → API**, copy:
    - `Project URL`
    - `anon public` key
@@ -148,6 +148,6 @@ Then open `http://localhost:8080`.
 
 ## Notes
 
-- Login button sends a magic-link email using Supabase Auth.
+- Login and Sign Up buttons use Supabase email/password authentication.
 - `add-game.html` requires authenticated session before submit.
 - Player rows are loaded from the `players` table, so seeded players automatically appear on add/edit flows.
