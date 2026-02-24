@@ -61,10 +61,17 @@ async function refreshAuthUi() {
     if (actionsHead) {
       actionsHead.hidden = !isAuthed;
     }
-    applyFilters();
   } catch {
     statusEl.textContent = 'Auth status unavailable';
+    isAuthed = false;
+    if (logoutBtn) logoutBtn.hidden = true;
+    if (loginBtn) loginBtn.hidden = false;
+    if (emailInput) emailInput.hidden = false;
+    if (passwordInput) passwordInput.hidden = false;
+    if (actionsHead) actionsHead.hidden = true;
   }
+
+  applyFilters();
 }
 
 function calcSummary(games) {
@@ -130,9 +137,9 @@ function renderLeaderboard(tableBody, rows) {
 }
 
 function getGamesForSelection() {
-  if (!statsViewFilter) return [...allGames];
+  if (!statsViewFilter) return [...(allGames || [])];
   const selectedValue = statsViewFilter.value;
-  if (!selectedValue || selectedValue === 'total') return [...allGames];
+  if (!selectedValue || selectedValue === 'total') return [...(allGames || [])];
   return allGames.filter((g) => dateOnlyString(g.game_date) === selectedValue);
 }
 
@@ -157,6 +164,8 @@ function renderGames(games) {
 }
 
 function populateViewFilter() {
+  if (!statsViewFilter) return;
+
   const uniqueDates = [...new Set(allGames.map((g) => dateOnlyString(g.game_date)))].sort((a, b) => b.localeCompare(a));
   const options = [
     '<option value="total">Total</option>',
@@ -170,8 +179,6 @@ function populateViewFilter() {
 }
 
 function applyFilters() {
-  if (!statsViewFilter) return;
-
   const visibleGames = getGamesForSelection();
   const visibleGameIds = new Set(visibleGames.map((g) => g.id));
   const visibleLines = allLines.filter((line) => visibleGameIds.has(line.game_id));
@@ -199,9 +206,9 @@ async function loadStats() {
     throw new Error(message);
   }
 
-  allGames = games;
-  allLines = lines;
-  allPlayers = players;
+  allGames = games || [];
+  allLines = lines || [];
+  allPlayers = players || [];
   populateViewFilter();
   applyFilters();
 }
