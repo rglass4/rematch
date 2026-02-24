@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Add Game - Rematch</title>
+    <link rel="stylesheet" href="./app.css" />
+  </head>
+  <body>
+    <div class="container">
+      <div class="topbar">
+        <h1>Add Game</h1>
+        <a class="button-link" href="./index.html">Back to Dashboard</a>
+      </div>
+
+      <section class="card">
+        <form id="add-game-form">
+          <label for="game-date">Game Date/Time</label>
+          <input id="game-date" type="datetime-local" required />
+
+          <label for="result">Result</label>
+          <select id="result" required>
+            <option value="W">Win</option>
+            <option value="L">Loss</option>
+          </select>
+
+          <label for="goals-for">Goals For</label>
+          <input id="goals-for" type="number" min="0" value="0" required />
+
+          <label for="goals-against">Goals Against</label>
+          <input id="goals-against" type="number" min="0" value="0" required />
+
+          <label><input id="overtime" type="checkbox" /> Overtime</label>
+
+          <h2>Player Lines</h2>
+          <p class="small">Only non-zero lines or goalie starts will be saved.</p>
+          <div id="players-wrap"></div>
+
+          <div id="auth-guard" class="message"></div>
+          <button id="submit-btn" type="submit">Save Game</button>
+          <div id="form-message" class="message"></div>
+        </form>
+      </section>
+    </div>
+
+    <script type="module" src="./addGame.js"></script>
+  </body>
+</html>
