@@ -5,6 +5,8 @@ const emailInput = document.getElementById('email-input');
 const loginBtn = document.getElementById('login-btn');
 const logoutBtn = document.getElementById('logout-btn');
 const authMsg = document.getElementById('auth-message');
+const leaderboardMode = document.getElementById('leaderboard-mode');
+const statsDateFilter = document.getElementById('stats-date-filter');
 
 const summaryIds = {
   games: document.getElementById('total-games'),
@@ -16,10 +18,25 @@ const summaryIds = {
 };
 
 const leaderboardBody = document.getElementById('player-stats-body');
+const specialLeaderboardBody = document.getElementById('special-player-stats-body');
+const gamesBody = document.getElementById('games-body');
+
+const SPECIAL_PLAYERS = new Set(['4th Man', '5th Man']);
+let allGames = [];
+let allLines = [];
+let allPlayers = [];
 
 function showAuthMessage(text, isError = false) {
   authMsg.textContent = text;
   authMsg.className = isError ? 'message error' : 'message';
+}
+
+function dateOnlyString(dateInput) {
+  return new Date(dateInput).toISOString().slice(0, 10);
+}
+
+function formatGameDate(dateInput) {
+  return new Date(dateInput).toLocaleString();
 }
 
 async function refreshAuthUi() {
@@ -87,8 +104,8 @@ function renderSummary(summary) {
   summaryIds.gd.textContent = summary.gd;
 }
 
-function renderLeaderboard(rows) {
-  leaderboardBody.innerHTML = '';
+function renderLeaderboard(tableBody, rows) {
+  tableBody.innerHTML = '';
   for (const row of rows) {
     const tr = document.createElement('tr');
     tr.innerHTML = `
@@ -99,8 +116,51 @@ function renderLeaderboard(rows) {
       <td>${row.points}</td>
       <td>${row.goalie_starts}</td>
     `;
-    leaderboardBody.appendChild(tr);
+    tableBody.appendChild(tr);
   }
+}
+
+function renderGames(games, selectedDate) {
+  gamesBody.innerHTML = '';
+  if (!selectedDate) return;
+
+  const filteredGames = games
+    .filter((g) => dateOnlyString(g.game_date) === selectedDate)
+    .sort((a, b) => new Date(b.game_date) - new Date(a.game_date));
+
+  for (const game of filteredGames) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${formatGameDate(game.game_date)}</td>
+      <td>${game.result}</td>
+      <td>${game.goals_for}-${game.goals_against}</td>
+      <td>${game.overtime ? 'Yes' : 'No'}</td>
+    `;
+    gamesBody.appendChild(tr);
+  }
+}
+
+function applyFilters() {
+  const mode = leaderboardMode.value;
+  const selectedDate = statsDateFilter.value;
+
+  let visibleGames = allGames;
+  if (mode === 'date' && selectedDate) {
+    visibleGames = allGames.filter((g) => dateOnlyString(g.game_date) === selectedDate);
+  }
+
+  const visibleGameIds = new Set(visibleGames.map((g) => g.id));
+  const visibleLines = allLines.filter((line) => visibleGameIds.has(line.game_id));
+
+  renderSummary(calcSummary(visibleGames));
+
+  const totals = calcPlayerTotals(allPlayers, visibleLines);
+  const mainPlayers = totals.filter((row) => !SPECIAL_PLAYERS.has(row.name));
+  const specialPlayers = totals.filter((row) => SPECIAL_PLAYERS.has(row.name));
+
+  renderLeaderboard(leaderboardBody, mainPlayers);
+  renderLeaderboard(specialLeaderboardBody, specialPlayers);
+  renderGames(allGames, selectedDate);
 }
 
 async function loadStats() {
@@ -115,9 +175,14 @@ async function loadStats() {
     throw new Error(message);
   }
 
-  renderSummary(calcSummary(games));
-  renderLeaderboard(calcPlayerTotals(players, lines));
+  allGames = games;
+  allLines = lines;
+  allPlayers = players;
+  applyFilters();
 }
+
+leaderboardMode?.addEventListener('change', applyFilters);
+statsDateFilter?.addEventListener('change', applyFilters);
 
 loginBtn?.addEventListener('click', async () => {
   const email = emailInput.value.trim();

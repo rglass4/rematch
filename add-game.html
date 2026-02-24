@@ -25,16 +25,27 @@
           </select>
 
           <label for="goals-for">Goals For</label>
-          <input id="goals-for" type="number" min="0" value="0" required />
+          <div class="number-stepper">
+            <button type="button" class="stepper-btn" data-target="goals-for" data-delta="-1">-</button>
+            <input id="goals-for" type="number" min="0" value="0" required />
+            <button type="button" class="stepper-btn" data-target="goals-for" data-delta="1">+</button>
+          </div>
 
           <label for="goals-against">Goals Against</label>
-          <input id="goals-against" type="number" min="0" value="0" required />
+          <div class="number-stepper">
+            <button type="button" class="stepper-btn" data-target="goals-against" data-delta="-1">-</button>
+            <input id="goals-against" type="number" min="0" value="0" required />
+            <button type="button" class="stepper-btn" data-target="goals-against" data-delta="1">+</button>
+          </div>
 
           <label><input id="overtime" type="checkbox" /> Overtime</label>
 
-          <h2>Player Lines</h2>
+          <h2>Main Player Lines</h2>
           <p class="small">Only non-zero lines or goalie starts will be saved.</p>
           <div id="players-wrap"></div>
+
+          <h2>4th/5th Man</h2>
+          <div id="special-players-wrap"></div>
 
           <div id="auth-guard" class="message"></div>
           <button id="submit-btn" type="submit">Save Game</button>

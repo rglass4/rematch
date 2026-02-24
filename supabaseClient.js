@@ -5,8 +5,17 @@ const SUPABASE_ANON_KEY = 'sb_publishable_wUK7P00_jrX7hktpHIVbJw_ayWLYN9p';
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+function getEmailRedirectUrl() {
+  return new URL('./index.html', window.location.href).toString();
+}
+
 export async function signInWithOtp(email) {
-  return supabase.auth.signInWithOtp({ email });
+  return supabase.auth.signInWithOtp({
+    email,
+    options: {
+      emailRedirectTo: getEmailRedirectUrl()
+    }
+  });
 }
 
 export async function signOut() {
