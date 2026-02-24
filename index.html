@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Rematch Stats</title>
+    <link rel="stylesheet" href="./app.css" />
+  </head>
+  <body>
+    <div class="container">
+      <div class="topbar">
+        <h1>Rematch Stat Tracker</h1>
+        <div class="actions">
+          <input id="email-input" type="email" placeholder="you@email.com" />
+          <button id="login-btn" type="button">Login (Magic Link)</button>
+          <button id="logout-btn" type="button" class="secondary" hidden>Logout</button>
+          <a class="button-link" href="./add-game.html">Add Game</a>
+        </div>
+      </div>
+
+      <div class="small" id="auth-status">Checking auth...</div>
+      <div id="auth-message" class="message"></div>
+
+      <section class="card">
+        <h2>Team Summary</h2>
+        <div class="summary-grid">
+          <div class="stat"><span class="label">Total Games</span><span class="value" id="total-games">0</span></div>
+          <div class="stat"><span class="label">W-L</span><span class="value" id="wl-record">0-0</span></div>
+          <div class="stat"><span class="label">OT Games</span><span class="value" id="ot-games">0</span></div>
+          <div class="stat"><span class="label">Goals For</span><span class="value" id="goals-for">0</span></div>
+          <div class="stat"><span class="label">Goals Against</span><span class="value" id="goals-against">0</span></div>
+          <div class="stat"><span class="label">Goal Diff</span><span class="value" id="goal-diff">0</span></div>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Player Leaderboard</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>GP</th>
+              <th>G</th>
+              <th>A</th>
+              <th>P</th>
+              <th>GS</th>
+            </tr>
+          </thead>
+          <tbody id="player-stats-body"></tbody>
+        </table>
+        <div id="stats-error" class="message error"></div>
+      </section>
+    </div>
+
+    <script type="module" src="./stats.js"></script>
+  </body>
+</html>
