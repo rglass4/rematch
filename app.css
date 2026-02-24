@@ -31,6 +31,10 @@ body {
 }
 
 h1, h2 { margin: 0.5rem 0; }
+h3 {
+  margin-top: 1rem;
+  margin-bottom: 0.5rem;
+}
 .card {
   background: white;
   border: 1px solid #e2e8f0;
@@ -138,4 +142,26 @@ a.button-link {
   border-radius: 6px;
   background: #0ea5e9;
   color: #fff;
+}
+
+.filters-row {
+  display: grid;
+  gap: 0.8rem;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.number-stepper {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.number-stepper input[type='number'] {
+  width: 100%;
+}
+
+.stepper-btn {
+  min-width: 2rem;
+  padding: 0.35rem 0.5rem;
+  line-height: 1;
 }
