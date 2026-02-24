@@ -58,7 +58,9 @@ async function refreshAuthUi() {
       emailInput.hidden = false;
       passwordInput.hidden = false;
     }
-    actionsHead.hidden = !isAuthed;
+    if (actionsHead) {
+      actionsHead.hidden = !isAuthed;
+    }
     applyFilters();
   } catch {
     statusEl.textContent = 'Auth status unavailable';
@@ -128,6 +130,7 @@ function renderLeaderboard(tableBody, rows) {
 }
 
 function getGamesForSelection() {
+  if (!statsViewFilter) return [...allGames];
   const selectedValue = statsViewFilter.value;
   if (!selectedValue || selectedValue === 'total') return [...allGames];
   return allGames.filter((g) => dateOnlyString(g.game_date) === selectedValue);
