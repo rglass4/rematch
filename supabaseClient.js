@@ -9,9 +9,17 @@ function getEmailRedirectUrl() {
   return new URL('./index.html', window.location.href).toString();
 }
 
-export async function signInWithOtp(email) {
-  return supabase.auth.signInWithOtp({
+export async function signInWithPassword(email, password) {
+  return supabase.auth.signInWithPassword({
     email,
+    password
+  });
+}
+
+export async function signUpWithPassword(email, password) {
+  return supabase.auth.signUp({
+    email,
+    password,
     options: {
       emailRedirectTo: getEmailRedirectUrl()
     }

@@ -1,8 +1,10 @@
-import { supabase, signInWithOtp, signOut, getSession } from './supabaseClient.js';
+import { supabase, signInWithPassword, signUpWithPassword, signOut, getSession } from './supabaseClient.js';
 
 const statusEl = document.getElementById('auth-status');
 const emailInput = document.getElementById('email-input');
+const passwordInput = document.getElementById('password-input');
 const loginBtn = document.getElementById('login-btn');
+const signupBtn = document.getElementById('signup-btn');
 const logoutBtn = document.getElementById('logout-btn');
 const authMsg = document.getElementById('auth-message');
 const leaderboardMode = document.getElementById('leaderboard-mode');
@@ -46,12 +48,16 @@ async function refreshAuthUi() {
       statusEl.textContent = `Logged in: ${session.user.email}`;
       logoutBtn.hidden = false;
       loginBtn.hidden = true;
+      signupBtn.hidden = true;
       emailInput.hidden = true;
+      passwordInput.hidden = true;
     } else {
       statusEl.textContent = 'Not logged in';
       logoutBtn.hidden = true;
       loginBtn.hidden = false;
+      signupBtn.hidden = false;
       emailInput.hidden = false;
+      passwordInput.hidden = false;
     }
   } catch {
     statusEl.textContent = 'Auth status unavailable';
@@ -186,17 +192,37 @@ statsDateFilter?.addEventListener('change', applyFilters);
 
 loginBtn?.addEventListener('click', async () => {
   const email = emailInput.value.trim();
-  if (!email) {
-    showAuthMessage('Enter an email for magic link login.', true);
+  const password = passwordInput.value;
+  if (!email || !password) {
+    showAuthMessage('Enter both email and password to log in.', true);
     return;
   }
 
-  const { error } = await signInWithOtp(email);
+  const { error } = await signInWithPassword(email, password);
   if (error) {
     showAuthMessage(error.message, true);
     return;
   }
-  showAuthMessage('Magic link sent. Check your email.');
+
+  showAuthMessage('Logged in.');
+  refreshAuthUi();
+});
+
+signupBtn?.addEventListener('click', async () => {
+  const email = emailInput.value.trim();
+  const password = passwordInput.value;
+  if (!email || !password) {
+    showAuthMessage('Enter both email and password to sign up.', true);
+    return;
+  }
+
+  const { error } = await signUpWithPassword(email, password);
+  if (error) {
+    showAuthMessage(error.message, true);
+    return;
+  }
+
+  showAuthMessage('Sign-up successful. You can now log in.');
 });
 
 logoutBtn?.addEventListener('click', async () => {
