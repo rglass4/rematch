@@ -88,7 +88,8 @@ function calcPlayerTotals(players, lines) {
     goals: 0,
     assists: 0,
     points: 0,
-    goalie_starts: 0
+    goalie_starts: 0,
+    ppg: 0
   }));
 
   const map = new Map(totals.map((t) => [t.player_id, t]));
@@ -100,6 +101,7 @@ function calcPlayerTotals(players, lines) {
     t.goals += line.goals;
     t.assists += line.assists;
     t.points = t.goals + t.assists;
+    t.ppg = t.gp ? t.points / t.gp : 0;
     if (line.started_in_goal) t.goalie_starts += 1;
   }
 
@@ -117,12 +119,12 @@ function sortPlayerRows(rows) {
 }
 
 function calculatePpg(row) {
-  if (!row.gp) return '0.00';
-  return ((row.goals + row.assists) / row.gp).toFixed(2);
+  return (row.ppg || 0).toFixed(2);
 }
 
 
 function renderSummary(summary) {
+  if (!summaryIds.games || !summaryIds.wl || !summaryIds.ot || !summaryIds.gf || !summaryIds.ga || !summaryIds.gd) return;
   summaryIds.games.textContent = summary.totalGames;
   summaryIds.wl.textContent = `${summary.wins}-${summary.losses}`;
   summaryIds.ot.textContent = summary.otGames;
@@ -132,6 +134,7 @@ function renderSummary(summary) {
 }
 
 function renderLeaderboard(tableBody, rows) {
+  if (!tableBody) return;
   tableBody.innerHTML = '';
   for (const row of rows) {
     const tr = document.createElement('tr');
@@ -156,6 +159,7 @@ function getGamesForSelection() {
 }
 
 function renderGames(games) {
+  if (!gamesBody) return;
   gamesBody.innerHTML = '';
 
   const sortedGames = [...games].sort((a, b) => b.id - a.id);
