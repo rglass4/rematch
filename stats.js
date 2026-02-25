@@ -7,7 +7,6 @@ const loginBtn = document.getElementById('login-btn');
 const logoutBtn = document.getElementById('logout-btn');
 const authMsg = document.getElementById('auth-message');
 const statsViewFilter = document.getElementById('stats-view-filter');
-const actionsHead = document.getElementById('actions-head');
 
 const summaryIds = {
   games: document.getElementById('total-games'),
@@ -21,6 +20,11 @@ const summaryIds = {
 const leaderboardBody = document.getElementById('player-stats-body');
 const specialLeaderboardBody = document.getElementById('special-player-stats-body');
 const gamesBody = document.getElementById('games-body');
+const boxscoreModal = document.getElementById('boxscore-modal');
+const boxscoreTitle = document.getElementById('boxscore-title');
+const boxscoreMeta = document.getElementById('boxscore-meta');
+const boxscoreBody = document.getElementById('boxscore-body');
+const boxscoreCloseBtn = document.getElementById('boxscore-close');
 
 const SPECIAL_PLAYERS = new Set(['4th Man', '5th Man']);
 let allGames = [];
@@ -58,17 +62,9 @@ async function refreshAuthUi() {
       emailInput.hidden = false;
       passwordInput.hidden = false;
     }
-    if (actionsHead) {
-      actionsHead.hidden = !isAuthed;
-    }
   } catch {
     statusEl.textContent = 'Auth status unavailable';
     isAuthed = false;
-    if (logoutBtn) logoutBtn.hidden = true;
-    if (loginBtn) loginBtn.hidden = false;
-    if (emailInput) emailInput.hidden = false;
-    if (passwordInput) passwordInput.hidden = false;
-    if (actionsHead) actionsHead.hidden = true;
   }
 
   applyFilters();
@@ -154,10 +150,11 @@ function renderGames(games) {
       <td>${game.result}</td>
       <td>${game.goals_for}-${game.goals_against}</td>
       <td>${game.overtime ? 'Yes' : 'No'}</td>
-      ${isAuthed ? `<td class="game-actions">
-        <button type="button" class="secondary game-edit" data-game-id="${game.id}">Edit</button>
-        <button type="button" class="secondary game-delete" data-game-id="${game.id}">Delete</button>
-      </td>` : ''}
+      <td class="game-actions">
+        <button type="button" class="secondary game-view" data-game-id="${game.id}">View</button>
+        ${isAuthed ? `<button type="button" class="secondary game-edit" data-game-id="${game.id}">Edit</button>
+        <button type="button" class="secondary game-delete" data-game-id="${game.id}">Delete</button>` : ''}
+      </td>
     `;
     gamesBody.appendChild(tr);
   }
@@ -167,14 +164,17 @@ function populateViewFilter() {
   if (!statsViewFilter) return;
 
   const uniqueDates = [...new Set(allGames.map((g) => dateOnlyString(g.game_date)))].sort((a, b) => b.localeCompare(a));
+  const selectedBefore = statsViewFilter.value;
   const options = [
     '<option value="total">Total</option>',
     ...uniqueDates.map((date) => `<option value="${date}">${date}</option>`)
   ];
-  const selectedBefore = statsViewFilter.value;
   statsViewFilter.innerHTML = options.join('');
+
   if (selectedBefore && options.some((opt) => opt.includes(`value="${selectedBefore}"`))) {
     statsViewFilter.value = selectedBefore;
+  } else if (uniqueDates[0]) {
+    statsViewFilter.value = uniqueDates[0];
   }
 }
 
@@ -192,6 +192,35 @@ function applyFilters() {
   renderLeaderboard(leaderboardBody, mainPlayers);
   renderLeaderboard(specialLeaderboardBody, specialPlayers);
   renderGames(visibleGames);
+}
+
+function renderBoxScore(gameId) {
+  const game = allGames.find((g) => String(g.id) === String(gameId));
+  if (!game) return;
+
+  const playerMap = new Map(allPlayers.map((p) => [p.id, p.name]));
+  const lines = allLines
+    .filter((line) => String(line.game_id) === String(gameId))
+    .filter((line) => line.played_in_game !== false || line.goals > 0 || line.assists > 0 || line.started_in_goal)
+    .sort((a, b) => (b.goals + b.assists) - (a.goals + a.assists));
+
+  boxscoreTitle.textContent = `Box Score • ${formatGameDate(game.game_date)}`;
+  boxscoreMeta.textContent = `Result: ${game.result} (${game.goals_for}-${game.goals_against})${game.overtime ? ' OT' : ''}`;
+
+  boxscoreBody.innerHTML = lines
+    .map((line) => {
+      const name = playerMap.get(line.player_id) || `Player #${line.player_id}`;
+      return `<tr>
+        <td>${name}</td>
+        <td>${line.goals}</td>
+        <td>${line.assists}</td>
+        <td>${line.goals + line.assists}</td>
+        <td>${line.started_in_goal ? 'Yes' : ''}</td>
+      </tr>`;
+    })
+    .join('') || '<tr><td colspan="5">No active players recorded.</td></tr>';
+
+  boxscoreModal.showModal();
 }
 
 async function loadStats() {
@@ -227,41 +256,19 @@ async function deleteGame(gameId) {
   await loadStats();
 }
 
-async function editGame(gameId) {
-  const game = allGames.find((g) => String(g.id) === String(gameId));
-  if (!game) return;
-
-  const date = window.prompt('Date (YYYY-MM-DD)', dateOnlyString(game.game_date));
-  if (!date) return;
-  const result = window.prompt('Result (W or L)', game.result);
-  if (!result || !['W', 'L'].includes(result.toUpperCase())) return;
-  const goalsFor = Number(window.prompt('Goals For', String(game.goals_for)));
-  const goalsAgainst = Number(window.prompt('Goals Against', String(game.goals_against)));
-  const overtime = window.confirm('Overtime game? OK = Yes, Cancel = No');
-
-  const { error } = await supabase
-    .from('games')
-    .update({
-      game_date: new Date(`${date}T12:00:00`).toISOString(),
-      result: result.toUpperCase(),
-      goals_for: Number.isFinite(goalsFor) ? Math.max(0, goalsFor) : game.goals_for,
-      goals_against: Number.isFinite(goalsAgainst) ? Math.max(0, goalsAgainst) : game.goals_against,
-      overtime
-    })
-    .eq('id', gameId);
-
-  if (error) {
-    showAuthMessage(error.message, true);
-    return;
-  }
-
-  showAuthMessage('Game updated.');
-  await loadStats();
+function editGame(gameId) {
+  window.location.href = `./add-game.html?editId=${encodeURIComponent(gameId)}`;
 }
 
 statsViewFilter?.addEventListener('change', applyFilters);
 
 gamesBody?.addEventListener('click', async (event) => {
+  const viewBtn = event.target.closest('.game-view');
+  if (viewBtn) {
+    renderBoxScore(viewBtn.dataset.gameId);
+    return;
+  }
+
   const deleteBtn = event.target.closest('.game-delete');
   if (deleteBtn) {
     await deleteGame(deleteBtn.dataset.gameId);
@@ -270,8 +277,13 @@ gamesBody?.addEventListener('click', async (event) => {
 
   const editBtn = event.target.closest('.game-edit');
   if (editBtn) {
-    await editGame(editBtn.dataset.gameId);
+    editGame(editBtn.dataset.gameId);
   }
+});
+
+boxscoreCloseBtn?.addEventListener('click', () => boxscoreModal.close());
+boxscoreModal?.addEventListener('click', (event) => {
+  if (event.target === boxscoreModal) boxscoreModal.close();
 });
 
 loginBtn?.addEventListener('click', async () => {

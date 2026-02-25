@@ -89,13 +89,29 @@
               <th>Result</th>
               <th>Score</th>
               <th>OT</th>
-              <th id="actions-head" hidden>Actions</th>
+              <th id="actions-head">Actions</th>
             </tr>
           </thead>
           <tbody id="games-body"></tbody>
         </table>
       </section>
     </div>
+
+
+
+    <dialog id="boxscore-modal" class="boxscore-modal">
+      <div class="boxscore-header">
+        <h3 id="boxscore-title">Box Score</h3>
+        <button id="boxscore-close" type="button" class="secondary">Close</button>
+      </div>
+      <div id="boxscore-meta" class="small"></div>
+      <table>
+        <thead>
+          <tr><th>Player</th><th>G</th><th>A</th><th>P</th><th>Started in Net</th></tr>
+        </thead>
+        <tbody id="boxscore-body"></tbody>
+      </table>
+    </dialog>
 
     <script type="module" src="./stats.js"></script>
   </body>
