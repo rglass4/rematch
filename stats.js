@@ -11,9 +11,13 @@ const statsViewFilter = document.getElementById('stats-view-filter');
 const summaryIds = {
   games: document.getElementById('total-games'),
   wl: document.getElementById('wl-record'),
+  winPct: document.getElementById('win-pct'),
+  streak: document.getElementById('current-streak'),
   ot: document.getElementById('ot-games'),
   gf: document.getElementById('goals-for'),
   ga: document.getElementById('goals-against'),
+  gfPerGame: document.getElementById('goals-for-per-game'),
+  gaPerGame: document.getElementById('goals-against-per-game'),
   gd: document.getElementById('goal-diff')
 };
 
@@ -86,8 +90,33 @@ function calcSummary(games) {
   const otGames = games.filter((g) => g.overtime).length;
   const gf = games.reduce((sum, g) => sum + g.goals_for, 0);
   const ga = games.reduce((sum, g) => sum + g.goals_against, 0);
+  const winPct = totalGames ? (wins / totalGames) * 100 : 0;
+  const gfPerGame = totalGames ? gf / totalGames : 0;
+  const gaPerGame = totalGames ? ga / totalGames : 0;
 
-  return { totalGames, wins, losses, otGames, gf, ga, gd: gf - ga };
+  const latestFirstGames = [...games].sort((a, b) => {
+    const dateDiff = new Date(b.game_date) - new Date(a.game_date);
+    if (dateDiff !== 0) return dateDiff;
+    return b.id - a.id;
+  });
+
+  let streakResult = '';
+  let streakCount = 0;
+
+  for (const game of latestFirstGames) {
+    if (!streakResult) {
+      streakResult = game.result;
+      streakCount = 1;
+      continue;
+    }
+
+    if (game.result !== streakResult) break;
+    streakCount += 1;
+  }
+
+  const streak = streakCount ? `${streakResult}${streakCount}` : 'N/A';
+
+  return { totalGames, wins, losses, otGames, gf, ga, gd: gf - ga, winPct, streak, gfPerGame, gaPerGame };
 }
 
 function calcPlayerTotals(players, lines) {
@@ -134,12 +163,16 @@ function calculatePpg(row) {
 
 
 function renderSummary(summary) {
-  if (!summaryIds.games || !summaryIds.wl || !summaryIds.ot || !summaryIds.gf || !summaryIds.ga || !summaryIds.gd) return;
+  if (!summaryIds.games || !summaryIds.wl || !summaryIds.winPct || !summaryIds.streak || !summaryIds.ot || !summaryIds.gf || !summaryIds.ga || !summaryIds.gfPerGame || !summaryIds.gaPerGame || !summaryIds.gd) return;
   summaryIds.games.textContent = summary.totalGames;
   summaryIds.wl.textContent = `${summary.wins}-${summary.losses}`;
+  summaryIds.winPct.textContent = `${summary.winPct.toFixed(1)}%`;
+  summaryIds.streak.textContent = summary.streak;
   summaryIds.ot.textContent = summary.otGames;
   summaryIds.gf.textContent = summary.gf;
   summaryIds.ga.textContent = summary.ga;
+  summaryIds.gfPerGame.textContent = summary.gfPerGame.toFixed(2);
+  summaryIds.gaPerGame.textContent = summary.gaPerGame.toFixed(2);
   summaryIds.gd.textContent = summary.gd;
 }
 
@@ -151,7 +184,12 @@ function renderLeaderboard(tableBody, rows) {
   for (const row of rows) {
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td>${row.name}</td>
+      <td>
+        <div class="leaderboard-player-cell">
+          <img class="leaderboard-player-avatar" src="img/${row.player_id}.png" alt="${row.name}" width="32" height="32" />
+          <span>${row.name}</span>
+        </div>
+      </td>
       <td>${row.gp}</td>
       <td>${row.goals}</td>
       <td>${row.assists}</td>

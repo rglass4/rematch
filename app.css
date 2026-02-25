@@ -235,3 +235,18 @@ a.button-link {
 .player-row.played-highlight {
   background: #fef9c3;
 }
+
+
+.leaderboard-player-cell {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.leaderboard-player-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex: 0 0 32px;
+}
