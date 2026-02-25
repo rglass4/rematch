@@ -142,7 +142,7 @@ function getGamesForSelection() {
 function renderGames(games) {
   gamesBody.innerHTML = '';
 
-  const sortedGames = [...games].sort((a, b) => new Date(b.game_date) - new Date(a.game_date));
+  const sortedGames = [...games].sort((a, b) => a.id - b.id);
   for (const game of sortedGames) {
     const tr = document.createElement('tr');
     tr.innerHTML = `
