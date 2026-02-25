@@ -145,7 +145,9 @@ async function loadPlayers() {
 
 function buildPlayerLines(gameId) {
   const rows = [...document.querySelectorAll('.player-row[data-player-id]')];
-  return rows
+  const lineByPlayerId = new Map();
+
+  rows
     .map((row) => {
       const goals = clampToZero(row.querySelector('.goals').value);
       const assists = clampToZero(row.querySelector('.assists').value);
@@ -160,7 +162,12 @@ function buildPlayerLines(gameId) {
         played_in_game: played
       };
     })
-    .filter((r) => r.played_in_game || r.goals > 0 || r.assists > 0 || r.started_in_goal);
+    .filter((r) => r.played_in_game || r.goals > 0 || r.assists > 0 || r.started_in_goal)
+    .forEach((line) => {
+      lineByPlayerId.set(line.player_id, line);
+    });
+
+  return [...lineByPlayerId.values()];
 }
 
 function validate() {
@@ -232,7 +239,9 @@ form.addEventListener('submit', async (event) => {
 
     const lines = buildPlayerLines(gameId);
     if (lines.length > 0) {
-      const { error: linesErr } = await supabase.from('player_game_stats').insert(lines);
+      const { error: linesErr } = await supabase
+        .from('player_game_stats')
+        .upsert(lines, { onConflict: 'game_id,player_id' });
       if (linesErr) throw linesErr;
     }
 
