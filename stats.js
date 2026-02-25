@@ -18,7 +18,6 @@ const summaryIds = {
 };
 
 const leaderboardBody = document.getElementById('player-stats-body');
-const specialLeaderboardBody = document.getElementById('special-player-stats-body');
 const gamesBody = document.getElementById('games-body');
 const boxscoreModal = document.getElementById('boxscore-modal');
 const boxscoreTitle = document.getElementById('boxscore-title');
@@ -26,11 +25,11 @@ const boxscoreMeta = document.getElementById('boxscore-meta');
 const boxscoreBody = document.getElementById('boxscore-body');
 const boxscoreCloseBtn = document.getElementById('boxscore-close');
 
-const SPECIAL_PLAYERS = new Set(['4th Man', '5th Man']);
 let allGames = [];
 let allLines = [];
 let allPlayers = [];
 let isAuthed = false;
+let playerSort = { key: 'points', direction: 'desc' };
 
 function showAuthMessage(text, isError = false) {
   authMsg.textContent = text;
@@ -104,8 +103,24 @@ function calcPlayerTotals(players, lines) {
     if (line.started_in_goal) t.goalie_starts += 1;
   }
 
-  return totals.sort((a, b) => b.points - a.points || b.goals - a.goals || a.name.localeCompare(b.name));
+  return totals;
 }
+
+function sortPlayerRows(rows) {
+  const { key, direction } = playerSort;
+  const multiplier = direction === 'asc' ? 1 : -1;
+  return [...rows].sort((a, b) => {
+    const diff = (a[key] - b[key]) * multiplier;
+    if (diff !== 0) return diff;
+    return a.name.localeCompare(b.name);
+  });
+}
+
+function calculatePpg(row) {
+  if (!row.gp) return '0.00';
+  return ((row.goals + row.assists) / row.gp).toFixed(2);
+}
+
 
 function renderSummary(summary) {
   summaryIds.games.textContent = summary.totalGames;
@@ -126,6 +141,7 @@ function renderLeaderboard(tableBody, rows) {
       <td>${row.goals}</td>
       <td>${row.assists}</td>
       <td>${row.points}</td>
+      <td>${calculatePpg(row)}</td>
       <td>${row.goalie_starts}</td>
     `;
     tableBody.appendChild(tr);
@@ -142,7 +158,7 @@ function getGamesForSelection() {
 function renderGames(games) {
   gamesBody.innerHTML = '';
 
-  const sortedGames = [...games].sort((a, b) => a.id - b.id);
+  const sortedGames = [...games].sort((a, b) => b.id - a.id);
   for (const game of sortedGames) {
     const tr = document.createElement('tr');
     tr.innerHTML = `
@@ -185,12 +201,10 @@ function applyFilters() {
 
   renderSummary(calcSummary(visibleGames));
 
-  const totals = calcPlayerTotals(allPlayers, visibleLines);
-  const mainPlayers = totals.filter((row) => !SPECIAL_PLAYERS.has(row.name));
-  const specialPlayers = totals.filter((row) => SPECIAL_PLAYERS.has(row.name));
+  const totals = calcPlayerTotals(allPlayers, visibleLines)
+    .filter((row) => row.gp > 0);
 
-  renderLeaderboard(leaderboardBody, mainPlayers);
-  renderLeaderboard(specialLeaderboardBody, specialPlayers);
+  renderLeaderboard(leaderboardBody, sortPlayerRows(totals));
   renderGames(visibleGames);
 }
 
@@ -259,6 +273,22 @@ async function deleteGame(gameId) {
 function editGame(gameId) {
   window.location.href = `./add-game.html?editId=${encodeURIComponent(gameId)}`;
 }
+
+document.querySelectorAll('.table-sort').forEach((button) => {
+  button.addEventListener('click', () => {
+    const key = button.dataset.sortKey;
+    if (!key) return;
+
+    if (playerSort.key === key) {
+      playerSort.direction = playerSort.direction === 'desc' ? 'asc' : 'desc';
+    } else {
+      playerSort.key = key;
+      playerSort.direction = 'desc';
+    }
+
+    applyFilters();
+  });
+});
 
 statsViewFilter?.addEventListener('change', applyFilters);
 

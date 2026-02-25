@@ -77,6 +77,20 @@ th, td {
   border-bottom: 1px solid #e2e8f0;
 }
 
+
+.table-sort {
+  background: transparent;
+  border: none;
+  color: inherit;
+  font: inherit;
+  font-weight: 700;
+  padding: 0;
+}
+
+.table-sort:hover {
+  text-decoration: underline;
+}
+
 form label {
   display: block;
   margin: 0.6rem 0 0.3rem;
