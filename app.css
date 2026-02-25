@@ -198,3 +198,22 @@ a.button-link {
   display: flex;
   gap: 0.4rem;
 }
+
+.boxscore-modal {
+  width: min(760px, 92vw);
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  padding: 1rem;
+}
+
+.boxscore-modal::backdrop {
+  background: rgba(15, 23, 42, 0.5);
+}
+
+.boxscore-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}

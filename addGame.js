@@ -6,9 +6,11 @@ const specialPlayersWrap = document.getElementById('special-players-wrap');
 const msg = document.getElementById('form-message');
 const submitBtn = document.getElementById('submit-btn');
 const authGuard = document.getElementById('auth-guard');
+const titleEl = document.getElementById('page-title');
 
 const SPECIAL_PLAYERS = new Set(['4th Man', '5th Man']);
 let previousPlayedByPlayer = new Map();
+let editingGameId = null;
 
 function showMessage(text, isError = false) {
   msg.textContent = text;
@@ -48,7 +50,7 @@ async function checkAuth() {
   const session = await getSession();
   const allowed = Boolean(session);
   submitBtn.disabled = !allowed;
-  authGuard.textContent = allowed ? '' : 'You must be logged in to add a game.';
+  authGuard.textContent = allowed ? '' : 'You must be logged in to add or edit a game.';
   authGuard.className = allowed ? 'message' : 'message error';
   return allowed;
 }
@@ -95,11 +97,22 @@ function renderPlayers(players) {
   `;
 }
 
+function setPlayerRowsFromLines(lines) {
+  for (const line of lines) {
+    const row = document.querySelector(`.player-row[data-player-id="${line.player_id}"]`);
+    if (!row) continue;
+    row.querySelector('.goals').value = String(clampToZero(line.goals));
+    row.querySelector('.assists').value = String(clampToZero(line.assists));
+    row.querySelector('.played').checked = line.played_in_game !== false;
+    row.querySelector('.goalie-start').checked = Boolean(line.started_in_goal);
+  }
+}
+
 async function loadPreviousPlayedMap() {
   const { data: latestGame, error: latestError } = await supabase
     .from('games')
     .select('id')
-    .order('game_date', { ascending: false })
+    .order('id', { ascending: false })
     .limit(1)
     .maybeSingle();
 
@@ -110,16 +123,7 @@ async function loadPreviousPlayedMap() {
     .select('player_id, played_in_game')
     .eq('game_id', latestGame.id);
 
-  if (linesError) {
-    const { data: fallbackLines, error: fallbackErr } = await supabase
-      .from('player_game_stats')
-      .select('player_id')
-      .eq('game_id', latestGame.id);
-    if (fallbackErr) return;
-    previousPlayedByPlayer = new Map(fallbackLines.map((line) => [line.player_id, true]));
-    return;
-  }
-
+  if (linesError) return;
   previousPlayedByPlayer = new Map(lines.map((line) => [line.player_id, line.played_in_game !== false]));
 }
 
@@ -178,31 +182,61 @@ function validate() {
   };
 }
 
+async function populateEditModeIfNeeded() {
+  const editId = new URLSearchParams(window.location.search).get('editId');
+  if (!editId) return;
+  editingGameId = Number(editId);
+  if (!Number.isFinite(editingGameId)) return;
+
+  titleEl.textContent = 'Edit Game';
+  submitBtn.textContent = 'Save Changes';
+
+  const [{ data: game, error: gameErr }, { data: lines, error: linesErr }] = await Promise.all([
+    supabase.from('games').select('*').eq('id', editingGameId).maybeSingle(),
+    supabase.from('player_game_stats').select('*').eq('game_id', editingGameId)
+  ]);
+
+  if (gameErr || !game) throw gameErr || new Error('Game not found.');
+  if (linesErr) throw linesErr;
+
+  document.getElementById('game-date').value = todayLocalDateValue();
+  document.getElementById('game-date').value = new Date(game.game_date).toISOString().slice(0, 10);
+  document.getElementById('result').value = game.result;
+  document.getElementById('goals-for').value = String(clampToZero(game.goals_for));
+  document.getElementById('goals-against').value = String(clampToZero(game.goals_against));
+  document.getElementById('overtime').checked = Boolean(game.overtime);
+  setPlayerRowsFromLines(lines || []);
+}
+
 form.addEventListener('submit', async (event) => {
   event.preventDefault();
   showMessage('');
 
   try {
-    const isAuthed = await checkAuth();
-    if (!isAuthed) return;
+    const authed = await checkAuth();
+    if (!authed) return;
 
     const gamePayload = validate();
+    let gameId = editingGameId;
 
-    const { data: gameRow, error: gameErr } = await supabase
-      .from('games')
-      .insert(gamePayload)
-      .select('id')
-      .single();
+    if (editingGameId) {
+      const { error: updateErr } = await supabase.from('games').update(gamePayload).eq('id', editingGameId);
+      if (updateErr) throw updateErr;
+      const { error: deleteErr } = await supabase.from('player_game_stats').delete().eq('game_id', editingGameId);
+      if (deleteErr) throw deleteErr;
+    } else {
+      const { data: gameRow, error: gameErr } = await supabase.from('games').insert(gamePayload).select('id').single();
+      if (gameErr) throw gameErr;
+      gameId = gameRow.id;
+    }
 
-    if (gameErr) throw gameErr;
-
-    const lines = buildPlayerLines(gameRow.id);
+    const lines = buildPlayerLines(gameId);
     if (lines.length > 0) {
       const { error: linesErr } = await supabase.from('player_game_stats').insert(lines);
       if (linesErr) throw linesErr;
     }
 
-    showMessage('Game added. Redirecting...');
+    showMessage(editingGameId ? 'Game updated. Redirecting...' : 'Game added. Redirecting...');
     setTimeout(() => {
       window.location.href = './index.html';
     }, 700);
@@ -217,6 +251,7 @@ form.addEventListener('submit', async (event) => {
   try {
     await loadPreviousPlayedMap();
     await loadPlayers();
+    await populateEditModeIfNeeded();
     await checkAuth();
   } catch (err) {
     showMessage(`Load error: ${err.message}`, true);
