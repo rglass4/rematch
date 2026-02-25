@@ -9,16 +9,27 @@ const authGuard = document.getElementById('auth-guard');
 const titleEl = document.getElementById('page-title');
 
 const SPECIAL_PLAYERS = new Set(['4th Man', '5th Man']);
+const EASTERN_TIMEZONE = 'America/New_York';
 let previousPlayedByPlayer = new Map();
 let editingGameId = null;
+let latestGameDateValue = '';
 
 function showMessage(text, isError = false) {
   msg.textContent = text;
   msg.className = isError ? 'message error' : 'message';
 }
 
+function dateValueInTimezone(dateInput, timeZone = EASTERN_TIMEZONE) {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).format(new Date(dateInput));
+}
+
 function todayLocalDateValue() {
-  return new Date().toISOString().slice(0, 10);
+  return dateValueInTimezone(Date.now());
 }
 
 function clampToZero(value) {
@@ -111,12 +122,13 @@ function setPlayerRowsFromLines(lines) {
 async function loadPreviousPlayedMap() {
   const { data: latestGame, error: latestError } = await supabase
     .from('games')
-    .select('id')
+    .select('id, game_date')
     .order('id', { ascending: false })
     .limit(1)
     .maybeSingle();
 
   if (latestError || !latestGame) return;
+  latestGameDateValue = dateValueInTimezone(latestGame.game_date);
 
   const { data: lines, error: linesError } = await supabase
     .from('player_game_stats')
@@ -181,7 +193,7 @@ function validate() {
   }
 
   return {
-    game_date: new Date(`${date}T12:00:00`).toISOString(),
+    game_date: new Date(`${date}T12:00:00Z`).toISOString(),
     result,
     goals_for: gf,
     goals_against: ga,
@@ -206,8 +218,7 @@ async function populateEditModeIfNeeded() {
   if (gameErr || !game) throw gameErr || new Error('Game not found.');
   if (linesErr) throw linesErr;
 
-  document.getElementById('game-date').value = todayLocalDateValue();
-  document.getElementById('game-date').value = new Date(game.game_date).toISOString().slice(0, 10);
+  document.getElementById('game-date').value = dateValueInTimezone(game.game_date);
   document.getElementById('result').value = game.result;
   document.getElementById('goals-for').value = String(clampToZero(game.goals_for));
   document.getElementById('goals-against').value = String(clampToZero(game.goals_against));
@@ -259,6 +270,9 @@ form.addEventListener('submit', async (event) => {
   attachSteppers(form);
   try {
     await loadPreviousPlayedMap();
+    if (!editingGameId && latestGameDateValue) {
+      document.getElementById('game-date').value = latestGameDateValue;
+    }
     await loadPlayers();
     await populateEditModeIfNeeded();
     await checkAuth();
