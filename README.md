@@ -77,6 +77,7 @@ values
   ('Pton'),
   ('TDot'),
   ('Bags'),
+  ('4th Man'),
   ('5th Man')
 on conflict (name) do nothing;
 
@@ -121,6 +122,17 @@ with check (true);
 
 create policy "authenticated can delete games"
 on games for delete
+to authenticated
+using (true);
+
+create policy "authenticated can update player_game_stats"
+on player_game_stats for update
+to authenticated
+using (true)
+with check (true);
+
+create policy "authenticated can delete player_game_stats"
+on player_game_stats for delete
 to authenticated
 using (true);
 

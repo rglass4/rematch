@@ -56,7 +56,7 @@ async function checkAuth() {
 }
 
 function rowTemplate(player) {
-  const played = previousPlayedByPlayer.get(player.id) ?? true;
+  const played = previousPlayedByPlayer.get(player.id) ?? false;
   return `
     <div class="player-row" data-player-id="${player.id}">
       <div>${player.name}</div>
@@ -241,7 +241,7 @@ form.addEventListener('submit', async (event) => {
     if (lines.length > 0) {
       const { error: linesErr } = await supabase
         .from('player_game_stats')
-        .upsert(lines, { onConflict: 'game_id,player_id' });
+        .insert(lines);
       if (linesErr) throw linesErr;
     }
 
