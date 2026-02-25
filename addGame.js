@@ -36,6 +36,27 @@ function clampToZero(value) {
   return Math.max(0, Number(value) || 0);
 }
 
+function inferResultFromScore(gf, ga) {
+  if (gf > ga) return 'W';
+  if (gf < ga) return 'L';
+  return '';
+}
+
+function syncResultFromScore() {
+  const resultInput = document.getElementById('result');
+  const goalsForInput = document.getElementById('goals-for');
+  const goalsAgainstInput = document.getElementById('goals-against');
+  if (!resultInput || !goalsForInput || !goalsAgainstInput) return;
+
+  const gf = clampToZero(goalsForInput.value);
+  const ga = clampToZero(goalsAgainstInput.value);
+  resultInput.value = inferResultFromScore(gf, ga);
+}
+
+function updatePlayedRowHighlight(row) {
+  row.classList.toggle('played-highlight', row.querySelector('.played')?.checked);
+}
+
 function updateInputValue(inputEl, delta) {
   const nextValue = clampToZero((Number(inputEl.value) || 0) + delta);
   inputEl.value = String(nextValue);
@@ -54,6 +75,9 @@ function attachSteppers(container) {
 
     if (!targetInput) return;
     updateInputValue(targetInput, delta);
+    if (targetInput.id === 'goals-for' || targetInput.id === 'goals-against') {
+      syncResultFromScore();
+    }
   });
 }
 
@@ -116,6 +140,7 @@ function setPlayerRowsFromLines(lines) {
     row.querySelector('.assists').value = String(clampToZero(line.assists));
     row.querySelector('.played').checked = line.played_in_game !== false;
     row.querySelector('.goalie-start').checked = Boolean(line.started_in_goal);
+    updatePlayedRowHighlight(row);
   }
 }
 
@@ -188,8 +213,8 @@ function validate() {
   const gf = clampToZero(document.getElementById('goals-for').value);
   const ga = clampToZero(document.getElementById('goals-against').value);
 
-  if (!date || !['W', 'L'].includes(result)) {
-    throw new Error('Please fill game date and result.');
+  if (!date) {
+    throw new Error('Please fill game date.');
   }
 
   return {
@@ -222,9 +247,24 @@ async function populateEditModeIfNeeded() {
   document.getElementById('result').value = game.result;
   document.getElementById('goals-for').value = String(clampToZero(game.goals_for));
   document.getElementById('goals-against').value = String(clampToZero(game.goals_against));
+  syncResultFromScore();
   document.getElementById('overtime').checked = Boolean(game.overtime);
   setPlayerRowsFromLines(lines || []);
 }
+
+form.addEventListener('change', (event) => {
+  const playedInput = event.target.closest('.played');
+  if (playedInput) {
+    const row = playedInput.closest('.player-row[data-player-id]');
+    if (row) updatePlayedRowHighlight(row);
+  }
+});
+
+form.addEventListener('input', (event) => {
+  if (event.target.id === 'goals-for' || event.target.id === 'goals-against') {
+    syncResultFromScore();
+  }
+});
 
 form.addEventListener('submit', async (event) => {
   event.preventDefault();
@@ -274,7 +314,9 @@ form.addEventListener('submit', async (event) => {
       document.getElementById('game-date').value = latestGameDateValue;
     }
     await loadPlayers();
+    document.querySelectorAll('.player-row[data-player-id]').forEach(updatePlayedRowHighlight);
     await populateEditModeIfNeeded();
+    syncResultFromScore();
     await checkAuth();
   } catch (err) {
     showMessage(`Load error: ${err.message}`, true);
