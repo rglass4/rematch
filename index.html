@@ -46,35 +46,19 @@
 
       <section class="card">
         <h2>Player Leaderboard</h2>
-
-        <h3>Main Players</h3>
         <table>
           <thead>
             <tr>
               <th>Name</th>
-              <th>GP</th>
-              <th>G</th>
-              <th>A</th>
-              <th>P</th>
-              <th>GS</th>
+              <th><button type="button" class="table-sort" data-sort-key="gp">GP</button></th>
+              <th><button type="button" class="table-sort" data-sort-key="goals">G</button></th>
+              <th><button type="button" class="table-sort" data-sort-key="assists">A</button></th>
+              <th><button type="button" class="table-sort" data-sort-key="points">P</button></th>
+              <th>PPG</th>
+              <th><button type="button" class="table-sort" data-sort-key="goalie_starts">GS</button></th>
             </tr>
           </thead>
           <tbody id="player-stats-body"></tbody>
-        </table>
-
-        <h3>4th/5th Man</h3>
-        <table>
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>GP</th>
-              <th>G</th>
-              <th>A</th>
-              <th>P</th>
-              <th>GS</th>
-            </tr>
-          </thead>
-          <tbody id="special-player-stats-body"></tbody>
         </table>
 
         <div id="stats-error" class="message error"></div>
