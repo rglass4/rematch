@@ -30,6 +30,16 @@ let allLines = [];
 let allPlayers = [];
 let isAuthed = false;
 let playerSort = { key: 'points', direction: 'desc' };
+const missingElementWarnings = new Set();
+
+function getRequiredElementById(id) {
+  const element = document.getElementById(id);
+  if (!element && !missingElementWarnings.has(id)) {
+    console.warn(`Missing expected element #${id}; skipping dependent UI updates.`);
+    missingElementWarnings.add(id);
+  }
+  return element;
+}
 
 function showAuthMessage(text, isError = false) {
   authMsg.textContent = text;
@@ -134,8 +144,10 @@ function renderSummary(summary) {
 }
 
 function renderLeaderboard(tableBody, rows) {
-  if (!tableBody) return;
-  tableBody.innerHTML = '';
+  const resolvedTableBody = tableBody || getRequiredElementById('player-stats-body');
+  if (!resolvedTableBody) return;
+
+  resolvedTableBody.innerHTML = '';
   for (const row of rows) {
     const tr = document.createElement('tr');
     tr.innerHTML = `
@@ -147,7 +159,7 @@ function renderLeaderboard(tableBody, rows) {
       <td>${calculatePpg(row)}</td>
       <td>${row.goalie_starts}</td>
     `;
-    tableBody.appendChild(tr);
+    resolvedTableBody.appendChild(tr);
   }
 }
 
@@ -159,8 +171,9 @@ function getGamesForSelection() {
 }
 
 function renderGames(games) {
-  if (!gamesBody) return;
-  gamesBody.innerHTML = '';
+  const resolvedGamesBody = gamesBody || getRequiredElementById('games-body');
+  if (!resolvedGamesBody) return;
+  resolvedGamesBody.innerHTML = '';
 
   const sortedGames = [...games].sort((a, b) => b.id - a.id);
   for (const game of sortedGames) {
@@ -176,7 +189,7 @@ function renderGames(games) {
         <button type="button" class="secondary game-delete" data-game-id="${game.id}">Delete</button>` : ''}
       </td>
     `;
-    gamesBody.appendChild(tr);
+    resolvedGamesBody.appendChild(tr);
   }
 }
 
