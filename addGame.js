@@ -212,9 +212,28 @@ function validate() {
   const result = document.getElementById('result').value;
   const gf = clampToZero(document.getElementById('goals-for').value);
   const ga = clampToZero(document.getElementById('goals-against').value);
+  const rows = [...document.querySelectorAll('.player-row[data-player-id]')];
+  const goalieStarts = rows.reduce((total, row) => total + (row.querySelector('.goalie-start').checked ? 1 : 0), 0);
+  const totalPlayerGoals = rows.reduce((total, row) => total + clampToZero(row.querySelector('.goals').value), 0);
 
   if (!date) {
     throw new Error('Please fill game date.');
+  }
+
+  if (result !== 'W' && result !== 'L') {
+    throw new Error('Result must be set to a win or loss.');
+  }
+
+  if (goalieStarts !== 1) {
+    throw new Error('Please select exactly one GS (goalie start).');
+  }
+
+  if (gf === ga) {
+    throw new Error('Goals for and goals against cannot be equal.');
+  }
+
+  if (gf < totalPlayerGoals) {
+    throw new Error('Goals for cannot be less than total player goals scored.');
   }
 
   return {
