@@ -6,9 +6,11 @@ Simple static website for tracking Rematch game stats, designed for **GitHub Pag
 
 - `index.html` — dashboard (team summary + player leaderboard)
 - `add-game.html` — add a game and per-player stat lines
+- `player.html` — individual player profile and splits
 - `app.css` — minimal styles
 - `supabaseClient.js` — Supabase init + auth helpers
 - `stats.js` — dashboard queries + aggregation
+- `player.js` — player profile queries + per-player breakdowns
 - `addGame.js` — add-game submission flow
 
 ---

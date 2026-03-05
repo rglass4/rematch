@@ -187,7 +187,7 @@ function renderLeaderboard(tableBody, rows) {
       <td>
         <div class="leaderboard-player-cell">
           <img class="leaderboard-player-avatar" src="img/${row.player_id}.png" alt="${row.name}" width="32" height="32" />
-          <span>${row.name}</span>
+          <a class="player-profile-link" href="./player.html?id=${encodeURIComponent(row.player_id)}">${row.name}</a>
         </div>
       </td>
       <td>${row.gp}</td>

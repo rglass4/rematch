@@ -250,3 +250,15 @@ a.button-link {
   object-fit: cover;
   flex: 0 0 32px;
 }
+
+.player-profile-link {
+  color: #0f172a;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.player-profile-link:hover,
+.player-profile-link:focus-visible {
+  text-decoration: underline;
+  outline: none;
+}
