@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="shortcut icon" href="img/favicon.png" type="image/png"/>
+    <title>Records - Rematch</title>
+    <link rel="stylesheet" href="./app.css" />
+  </head>
+  <body>
+    <div class="container">
+      <div class="topbar">
+        <h1>Records</h1>
+        <div class="actions">
+          <a class="button-link" href="./index.html">Back to Dashboard</a>
+          <a class="button-link" href="./add-game.html">Add Game</a>
+        </div>
+      </div>
+
+      <div id="records-message" class="message"></div>
+
+      <section class="card">
+        <h2>Team Records</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Record</th>
+              <th>Value</th>
+              <th>Holder(s)</th>
+              <th>First Occurred</th>
+              <th>Last Occurred</th>
+            </tr>
+          </thead>
+          <tbody id="team-records-body"></tbody>
+        </table>
+      </section>
+
+      <section class="card">
+        <h2>Player In-Game Records</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Record</th>
+              <th>Value</th>
+              <th>Holder(s)</th>
+              <th>First Occurred</th>
+              <th>Last Occurred</th>
+            </tr>
+          </thead>
+          <tbody id="player-game-records-body"></tbody>
+        </table>
+      </section>
+
+      <section class="card">
+        <h2>Player Totals Records</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Record</th>
+              <th>Value</th>
+              <th>Holder(s)</th>
+              <th>First Reached</th>
+              <th>Last Reached</th>
+            </tr>
+          </thead>
+          <tbody id="player-total-records-body"></tbody>
+        </table>
+      </section>
+    </div>
+
+    <script type="module" src="./records.js"></script>
+  </body>
+</html>
