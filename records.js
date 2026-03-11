@@ -29,7 +29,12 @@ function gameContext(game) {
 function formatOccurrence(occurrence, holdersText) {
   if (!occurrence) return '—';
   const holderSuffix = holdersText ? ` · Holder(s): ${holdersText}` : '';
-  return `${formatDate(occurrence.game_date)} · Game #${occurrence.id} · ${occurrence.result}${holderSuffix}`;
+  if (occurrence.description) return `${occurrence.description}${holderSuffix}`;
+
+  const segments = [formatDate(occurrence.game_date)];
+  if (occurrence.id != null) segments.push(`Game #${occurrence.id}`);
+  if (occurrence.result) segments.push(occurrence.result);
+  return `${segments.join(' · ')}${holderSuffix}`;
 }
 
 function formatValue(value, decimals = 2) {
@@ -124,34 +129,21 @@ function buildTeamRecords(games) {
 }
 
 function buildPlayerInGameRecords(lines, playersById, gamesById, eligiblePlayerIds) {
-  const metrics = [
-    { key: 'goals', label: 'Most Goals in a Night' },
-    { key: 'assists', label: 'Most Assists in a Night' },
-    { key: 'points', label: 'Most Points in a Night' },
-    { key: 'goals_per_game', label: 'Most Goals Per Game in a Night' },
-    { key: 'assists_per_game', label: 'Most Assists Per Game in a Night' },
-    { key: 'points_per_game', label: 'Most Points Per Game in a Night' }
-  ];
-
   const eligibleLines = lines.filter((line) => eligiblePlayerIds.has(line.player_id));
-  const enriched = eligibleLines.map((line) => {
-    const gp = line.played_in_game === false ? 0 : 1;
-    const points = line.goals + line.assists;
-    return {
+
+  const inGameRecords = [
+    { key: 'goals', label: 'Most Goals in a Game' },
+    { key: 'assists', label: 'Most Assists in a Game' },
+    { key: 'points', label: 'Most Points in a Game' }
+  ].map((metric) => {
+    const scoredLines = eligibleLines.map((line) => ({
       ...line,
-      points,
-      goals_per_game: gp > 0 ? line.goals / gp : 0,
-      assists_per_game: gp > 0 ? line.assists / gp : 0,
-      points_per_game: gp > 0 ? points / gp : 0
-    };
-  });
+      points: line.goals + line.assists
+    }));
 
-  return metrics.map((metric) => {
-    const maxValue = Math.max(0, ...enriched.map((line) => line[metric.key] || 0));
-    const matching = enriched.filter((line) => (line[metric.key] || 0) === maxValue);
-
+    const maxValue = Math.max(0, ...scoredLines.map((line) => line[metric.key] || 0));
+    const matching = scoredLines.filter((line) => (line[metric.key] || 0) === maxValue);
     const holderNames = [...new Set(matching.map((line) => playersById.get(line.player_id)?.name).filter(Boolean))].sort();
-
     const occurrences = matching
       .map((line) => gamesById.get(line.game_id))
       .filter(Boolean)
@@ -165,6 +157,96 @@ function buildPlayerInGameRecords(lines, playersById, gamesById, eligiblePlayerI
       lastOccurrence: occurrences.length > 1 ? gameContext(occurrences[occurrences.length - 1]) : null
     };
   });
+
+  const byPlayerNight = new Map();
+  for (const line of eligibleLines) {
+    const game = gamesById.get(line.game_id);
+    if (!game) continue;
+
+    const key = `${line.player_id}::${game.game_date}`;
+    const row = byPlayerNight.get(key) || {
+      player_id: line.player_id,
+      game_date: game.game_date,
+      goals: 0,
+      assists: 0,
+      points: 0,
+      gp: 0
+    };
+
+    row.goals += line.goals;
+    row.assists += line.assists;
+    row.points = row.goals + row.assists;
+    if (line.played_in_game !== false) row.gp += 1;
+
+    byPlayerNight.set(key, row);
+  }
+
+  const nightRows = [...byPlayerNight.values()];
+  const sortNightRows = (a, b) => {
+    const dateDiff = new Date(a.game_date) - new Date(b.game_date);
+    if (dateDiff !== 0) return dateDiff;
+    return a.player_id - b.player_id;
+  };
+
+  const nightOccurrence = (row) => ({
+    game_date: row.game_date,
+    description: `${formatDate(row.game_date)} (Night)`
+  });
+
+  const nightTotalRecords = [
+    { key: 'goals', label: 'Most Goals in a Night' },
+    { key: 'assists', label: 'Most Assists in a Night' },
+    { key: 'points', label: 'Most Points in a Night' }
+  ].map((metric) => {
+    const maxValue = Math.max(0, ...nightRows.map((row) => row[metric.key] || 0));
+    const matching = nightRows.filter((row) => (row[metric.key] || 0) === maxValue).sort(sortNightRows);
+    const holderNames = [...new Set(matching.map((row) => playersById.get(row.player_id)?.name).filter(Boolean))].sort();
+
+    return {
+      label: metric.label,
+      value: maxValue,
+      holders: holderNames,
+      firstOccurrence: matching[0] ? nightOccurrence(matching[0]) : null,
+      lastOccurrence: matching.length > 1 ? nightOccurrence(matching[matching.length - 1]) : null
+    };
+  });
+
+  const nightPerGameRecords = [
+    { key: 'goals', label: 'Most Goals per Game in a Night' },
+    { key: 'assists', label: 'Most Assists per Game in a Night' },
+    { key: 'points', label: 'Most Points per Game in a Night' }
+  ].map((metric) => {
+    const eligibleNights = nightRows
+      .filter((row) => row.gp >= 5)
+      .map((row) => ({
+        ...row,
+        value: row.gp > 0 ? row[metric.key] / row.gp : 0
+      }));
+
+    if (!eligibleNights.length) {
+      return {
+        label: metric.label,
+        value: 'N/A',
+        holders: [],
+        firstOccurrence: null,
+        lastOccurrence: null
+      };
+    }
+
+    const maxValue = Math.max(...eligibleNights.map((row) => row.value));
+    const matching = eligibleNights.filter((row) => row.value === maxValue).sort(sortNightRows);
+    const holderNames = [...new Set(matching.map((row) => playersById.get(row.player_id)?.name).filter(Boolean))].sort();
+
+    return {
+      label: metric.label,
+      value: maxValue,
+      holders: holderNames,
+      firstOccurrence: nightOccurrence(matching[0]),
+      lastOccurrence: matching.length > 1 ? nightOccurrence(matching[matching.length - 1]) : null
+    };
+  });
+
+  return [...inGameRecords, ...nightTotalRecords, ...nightPerGameRecords];
 }
 
 function findLatestGameForPlayer(playerId, lines, gamesById) {
