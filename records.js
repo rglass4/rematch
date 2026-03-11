@@ -5,6 +5,8 @@ const teamBody = document.getElementById('team-records-body');
 const playerGameBody = document.getElementById('player-game-records-body');
 const playerTotalBody = document.getElementById('player-total-records-body');
 
+const SPECIAL_PLAYER_NAMES = new Set(['4th Man', '5th Man']);
+
 function formatDate(dateInput) {
   return new Date(dateInput).toLocaleDateString();
 }
@@ -24,26 +26,30 @@ function gameContext(game) {
   };
 }
 
-function formatOccurrence(occurrence) {
+function formatOccurrence(occurrence, holdersText) {
   if (!occurrence) return '—';
-  return `${formatDate(occurrence.game_date)} · Game #${occurrence.id} · ${occurrence.result}`;
+  const holderSuffix = holdersText ? ` · Holder(s): ${holdersText}` : '';
+  return `${formatDate(occurrence.game_date)} · Game #${occurrence.id} · ${occurrence.result}${holderSuffix}`;
 }
 
-function formatHolders(holders) {
-  if (!holders || !holders.length) return '—';
-  return holders.join(', ');
+function formatValue(value, decimals = 2) {
+  if (typeof value === 'number' && !Number.isInteger(value)) return value.toFixed(decimals);
+  return value;
 }
 
-function renderRecordRows(tableBody, records) {
+function renderRecordRows(tableBody, records, options = {}) {
+  const { includeHoldersInOccurrences = false } = options;
+
   tableBody.innerHTML = '';
   for (const record of records) {
     const tr = document.createElement('tr');
+    const holdersText = includeHoldersInOccurrences ? (record.holders?.length ? record.holders.join(', ') : '—') : null;
+
     tr.innerHTML = `
       <td>${record.label}</td>
-      <td>${record.value}</td>
-      <td>${formatHolders(record.holders)}</td>
-      <td>${formatOccurrence(record.firstOccurrence)}</td>
-      <td>${formatOccurrence(record.lastOccurrence)}</td>
+      <td>${formatValue(record.value)}</td>
+      <td>${formatOccurrence(record.firstOccurrence, holdersText)}</td>
+      <td>${formatOccurrence(record.lastOccurrence, holdersText)}</td>
     `;
     tableBody.appendChild(tr);
   }
@@ -117,19 +123,30 @@ function buildTeamRecords(games) {
   ];
 }
 
-function buildPlayerInGameRecords(lines, playersById, gamesById) {
+function buildPlayerInGameRecords(lines, playersById, gamesById, eligiblePlayerIds) {
   const metrics = [
-    { key: 'goals', label: 'Most Goals in a Game' },
-    { key: 'assists', label: 'Most Assists in a Game' },
-    { key: 'points', label: 'Most Points in a Game' }
+    { key: 'goals', label: 'Most Goals in a Night' },
+    { key: 'assists', label: 'Most Assists in a Night' },
+    { key: 'points', label: 'Most Points in a Night' },
+    { key: 'goals_per_game', label: 'Most Goals Per Game in a Night' },
+    { key: 'assists_per_game', label: 'Most Assists Per Game in a Night' },
+    { key: 'points_per_game', label: 'Most Points Per Game in a Night' }
   ];
 
-  return metrics.map((metric) => {
-    const enriched = lines.map((line) => ({
+  const eligibleLines = lines.filter((line) => eligiblePlayerIds.has(line.player_id));
+  const enriched = eligibleLines.map((line) => {
+    const gp = line.played_in_game === false ? 0 : 1;
+    const points = line.goals + line.assists;
+    return {
       ...line,
-      points: line.goals + line.assists
-    }));
+      points,
+      goals_per_game: gp > 0 ? line.goals / gp : 0,
+      assists_per_game: gp > 0 ? line.assists / gp : 0,
+      points_per_game: gp > 0 ? points / gp : 0
+    };
+  });
 
+  return metrics.map((metric) => {
     const maxValue = Math.max(0, ...enriched.map((line) => line[metric.key] || 0));
     const matching = enriched.filter((line) => (line[metric.key] || 0) === maxValue);
 
@@ -159,8 +176,10 @@ function findLatestGameForPlayer(playerId, lines, gamesById) {
   return playerGames[playerGames.length - 1] || null;
 }
 
-function buildPlayerTotalsRecords(players, lines, gamesById) {
-  const totals = players.map((p) => ({
+function buildPlayerTotalsRecords(players, lines, gamesById, eligiblePlayerIds) {
+  const eligiblePlayers = players.filter((p) => eligiblePlayerIds.has(p.id));
+
+  const totals = eligiblePlayers.map((p) => ({
     player_id: p.id,
     name: p.name,
     gp: 0,
@@ -172,6 +191,8 @@ function buildPlayerTotalsRecords(players, lines, gamesById) {
 
   const totalsByPlayer = new Map(totals.map((t) => [t.player_id, t]));
   for (const line of lines) {
+    if (!eligiblePlayerIds.has(line.player_id)) continue;
+
     const row = totalsByPlayer.get(line.player_id);
     if (!row) continue;
     if (line.played_in_game !== false) row.gp += 1;
@@ -237,10 +258,16 @@ async function loadRecords() {
   const allPlayers = players || [];
   const playersById = new Map(allPlayers.map((p) => [p.id, p]));
   const gamesById = new Map(allGames.map((g) => [g.id, g]));
+  const eligiblePlayers = allPlayers.filter((p) => !SPECIAL_PLAYER_NAMES.has(p.name));
+  const eligiblePlayerIds = new Set(eligiblePlayers.map((p) => p.id));
 
   renderRecordRows(teamBody, buildTeamRecords(allGames));
-  renderRecordRows(playerGameBody, buildPlayerInGameRecords(allLines, playersById, gamesById));
-  renderRecordRows(playerTotalBody, buildPlayerTotalsRecords(allPlayers, allLines, gamesById));
+  renderRecordRows(playerGameBody, buildPlayerInGameRecords(allLines, playersById, gamesById, eligiblePlayerIds), {
+    includeHoldersInOccurrences: true
+  });
+  renderRecordRows(playerTotalBody, buildPlayerTotalsRecords(allPlayers, allLines, gamesById, eligiblePlayerIds), {
+    includeHoldersInOccurrences: true
+  });
 }
 
 (async function init() {
