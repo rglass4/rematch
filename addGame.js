@@ -13,6 +13,8 @@ const EASTERN_TIMEZONE = 'America/New_York';
 let previousPlayedByPlayer = new Map();
 let editingGameId = null;
 let latestGameDateValue = '';
+let originalEditGamePayload = null;
+let originalEditLines = [];
 
 function showMessage(text, isError = false) {
   msg.textContent = text;
@@ -62,6 +64,20 @@ function updateInputValue(inputEl, delta) {
   inputEl.value = String(nextValue);
 }
 
+function normalizePlayedState(row) {
+  const goals = clampToZero(row.querySelector('.goals').value);
+  const assists = clampToZero(row.querySelector('.assists').value);
+  const started = row.querySelector('.goalie-start').checked;
+  const playedInput = row.querySelector('.played');
+  if (!playedInput) return;
+
+  if (goals > 0 || assists > 0 || started) {
+    playedInput.checked = true;
+  }
+
+  updatePlayedRowHighlight(row);
+}
+
 function attachSteppers(container) {
   container.addEventListener('click', (event) => {
     const button = event.target.closest('.stepper-btn');
@@ -77,6 +93,12 @@ function attachSteppers(container) {
     updateInputValue(targetInput, delta);
     if (targetInput.id === 'goals-for' || targetInput.id === 'goals-against') {
       syncResultFromScore();
+      return;
+    }
+
+    const row = targetInput.closest('.player-row[data-player-id]');
+    if (row) {
+      normalizePlayedState(row);
     }
   });
 }
@@ -189,7 +211,7 @@ function buildPlayerLines(gameId) {
       const goals = clampToZero(row.querySelector('.goals').value);
       const assists = clampToZero(row.querySelector('.assists').value);
       const started = row.querySelector('.goalie-start').checked;
-      const played = row.querySelector('.played').checked;
+      const played = row.querySelector('.played').checked || goals > 0 || assists > 0 || started;
       return {
         game_id: gameId,
         player_id: Number(row.dataset.playerId),
@@ -205,6 +227,17 @@ function buildPlayerLines(gameId) {
     });
 
   return [...lineByPlayerId.values()];
+}
+
+function cloneInsertableLines(lines, gameId) {
+  return (lines || []).map((line) => ({
+    game_id: gameId,
+    player_id: Number(line.player_id),
+    goals: clampToZero(line.goals),
+    assists: clampToZero(line.assists),
+    started_in_goal: Boolean(line.started_in_goal),
+    played_in_game: line.played_in_game !== false
+  }));
 }
 
 function validate() {
@@ -262,6 +295,15 @@ async function populateEditModeIfNeeded() {
   if (gameErr || !game) throw gameErr || new Error('Game not found.');
   if (linesErr) throw linesErr;
 
+  originalEditGamePayload = {
+    game_date: game.game_date,
+    result: game.result,
+    goals_for: clampToZero(game.goals_for),
+    goals_against: clampToZero(game.goals_against),
+    overtime: Boolean(game.overtime)
+  };
+  originalEditLines = cloneInsertableLines(lines || [], editingGameId);
+
   document.getElementById('game-date').value = dateValueInTimezone(game.game_date);
   document.getElementById('result').value = game.result;
   document.getElementById('goals-for').value = String(clampToZero(game.goals_for));
@@ -277,17 +319,32 @@ form.addEventListener('change', (event) => {
     const row = playedInput.closest('.player-row[data-player-id]');
     if (row) updatePlayedRowHighlight(row);
   }
+
+  const playerInput = event.target.closest('.goals, .assists, .goalie-start');
+  if (playerInput) {
+    const row = playerInput.closest('.player-row[data-player-id]');
+    if (row) normalizePlayedState(row);
+  }
 });
 
 form.addEventListener('input', (event) => {
   if (event.target.id === 'goals-for' || event.target.id === 'goals-against') {
     syncResultFromScore();
   }
+
+  const playerInput = event.target.closest('.goals, .assists');
+  if (playerInput) {
+    const row = playerInput.closest('.player-row[data-player-id]');
+    if (row) normalizePlayedState(row);
+  }
 });
 
 form.addEventListener('submit', async (event) => {
   event.preventDefault();
   showMessage('');
+  const backupGamePayload = originalEditGamePayload ? { ...originalEditGamePayload } : null;
+  const backupLines = cloneInsertableLines(originalEditLines, editingGameId);
+  let createdGameId = null;
 
   try {
     const authed = await checkAuth();
@@ -299,15 +356,23 @@ form.addEventListener('submit', async (event) => {
     if (editingGameId) {
       const { error: updateErr } = await supabase.from('games').update(gamePayload).eq('id', editingGameId);
       if (updateErr) throw updateErr;
-      const { error: deleteErr } = await supabase.from('player_game_stats').delete().eq('game_id', editingGameId);
-      if (deleteErr) throw deleteErr;
     } else {
       const { data: gameRow, error: gameErr } = await supabase.from('games').insert(gamePayload).select('id').single();
       if (gameErr) throw gameErr;
       gameId = gameRow.id;
+      createdGameId = gameRow.id;
     }
 
     const lines = buildPlayerLines(gameId);
+    if (lines.length === 0) {
+      throw new Error('Please mark at least one player as played, or enter stats/GS for them.');
+    }
+
+    if (editingGameId) {
+      const { error: deleteErr } = await supabase.from('player_game_stats').delete().eq('game_id', editingGameId);
+      if (deleteErr) throw deleteErr;
+    }
+
     if (lines.length > 0) {
       const { error: linesErr } = await supabase
         .from('player_game_stats')
@@ -315,11 +380,29 @@ form.addEventListener('submit', async (event) => {
       if (linesErr) throw linesErr;
     }
 
+    originalEditGamePayload = { ...gamePayload };
+    originalEditLines = cloneInsertableLines(lines, gameId);
     showMessage(editingGameId ? 'Game updated. Redirecting...' : 'Game added. Redirecting...');
     setTimeout(() => {
       window.location.href = './index.html';
     }, 700);
   } catch (err) {
+    if (editingGameId && originalEditGamePayload && originalEditLines) {
+      const { data: remainingLines } = await supabase
+        .from('player_game_stats')
+        .select('player_id')
+        .eq('game_id', editingGameId);
+
+      if ((remainingLines || []).length === 0 && backupGamePayload) {
+        await supabase.from('games').update(backupGamePayload).eq('id', editingGameId);
+        if (backupLines.length > 0) {
+          await supabase.from('player_game_stats').insert(backupLines);
+        }
+      }
+    } else if (createdGameId) {
+      await supabase.from('player_game_stats').delete().eq('game_id', createdGameId);
+      await supabase.from('games').delete().eq('id', createdGameId);
+    }
     showMessage(err.message || 'Could not save game.', true);
   }
 });
