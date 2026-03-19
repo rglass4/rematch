@@ -119,6 +119,10 @@ function calcSummary(games) {
   return { totalGames, wins, losses, otGames, gf, ga, gd: gf - ga, winPct, streak, gfPerGame, gaPerGame };
 }
 
+function didPlayerParticipate(line) {
+  return Boolean(line) && (line.played_in_game !== false || line.goals > 0 || line.assists > 0 || line.started_in_goal);
+}
+
 function calcPlayerTotals(players, lines) {
   const totals = players.map((p) => ({
     player_id: p.id,
@@ -136,7 +140,7 @@ function calcPlayerTotals(players, lines) {
   for (const line of lines) {
     const t = map.get(line.player_id);
     if (!t) continue;
-    if (line.played_in_game !== false) t.gp += 1;
+    if (didPlayerParticipate(line)) t.gp += 1;
     t.goals += line.goals;
     t.assists += line.assists;
     t.points = t.goals + t.assists;
@@ -270,7 +274,7 @@ function renderBoxScore(gameId) {
   const playerMap = new Map(allPlayers.map((p) => [p.id, p.name]));
   const lines = allLines
     .filter((line) => String(line.game_id) === String(gameId))
-    .filter((line) => line.played_in_game !== false || line.goals > 0 || line.assists > 0 || line.started_in_goal)
+    .filter(didPlayerParticipate)
     .sort((a, b) => (b.goals + b.assists) - (a.goals + a.assists));
 
   boxscoreTitle.textContent = `Box Score • ${formatGameDate(game.game_date)}`;
