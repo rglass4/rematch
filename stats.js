@@ -7,6 +7,7 @@ const loginBtn = document.getElementById('login-btn');
 const logoutBtn = document.getElementById('logout-btn');
 const authMsg = document.getElementById('auth-message');
 const statsViewFilter = document.getElementById('stats-view-filter');
+const statsErrorEl = document.getElementById('stats-error');
 
 const summaryIds = {
   games: document.getElementById('total-games'),
@@ -28,13 +29,16 @@ const boxscoreTitle = document.getElementById('boxscore-title');
 const boxscoreMeta = document.getElementById('boxscore-meta');
 const boxscoreBody = document.getElementById('boxscore-body');
 const boxscoreCloseBtn = document.getElementById('boxscore-close');
+const gamesSection = gamesBody?.closest('section');
 
 let allGames = [];
-let allLines = [];
 let allPlayers = [];
 let isAuthed = false;
 let playerSort = { key: 'points', direction: 'desc' };
 const missingElementWarnings = new Set();
+const PLAYER_LINES_PAGE_SIZE = 500;
+let currentVisibleLines = [];
+let currentFilterRequestId = 0;
 
 function getRequiredElementById(id) {
   const element = document.getElementById(id);
@@ -48,6 +52,10 @@ function getRequiredElementById(id) {
 function showAuthMessage(text, isError = false) {
   authMsg.textContent = text;
   authMsg.className = isError ? 'message error' : 'message';
+}
+
+function showStatsError(text = '') {
+  if (statsErrorEl) statsErrorEl.textContent = text;
 }
 
 function dateOnlyString(dateInput) {
@@ -80,7 +88,7 @@ async function refreshAuthUi() {
     isAuthed = false;
   }
 
-  applyFilters();
+  refreshFilteredView();
 }
 
 function calcSummary(games) {
@@ -253,10 +261,47 @@ function populateViewFilter() {
   }
 }
 
-function applyFilters() {
+async function fetchPlayerLinesForGameIds(gameIds) {
+  if (!Array.isArray(gameIds) || gameIds.length === 0) return [];
+
+  const lines = [];
+  let from = 0;
+
+  while (true) {
+    const { data, error } = await supabase
+      .from('player_game_stats')
+      .select('*')
+      .in('game_id', gameIds)
+      .order('id', { ascending: true })
+      .range(from, from + PLAYER_LINES_PAGE_SIZE - 1);
+
+    if (error) throw error;
+
+    const nextBatch = data || [];
+    lines.push(...nextBatch);
+
+    if (nextBatch.length < PLAYER_LINES_PAGE_SIZE) break;
+    from += PLAYER_LINES_PAGE_SIZE;
+  }
+
+  return lines;
+}
+
+async function loadVisibleLines() {
   const visibleGames = getGamesForSelection();
-  const visibleGameIds = new Set(visibleGames.map((g) => g.id));
-  const visibleLines = allLines.filter((line) => visibleGameIds.has(line.game_id));
+  const visibleGameIds = visibleGames.map((g) => g.id);
+  currentVisibleLines = await fetchPlayerLinesForGameIds(visibleGameIds);
+  return { visibleGames, visibleLines: currentVisibleLines };
+}
+
+async function applyFilters() {
+  const requestId = ++currentFilterRequestId;
+  const selectedValue = statsViewFilter?.value || 'total';
+  const showGames = selectedValue !== 'total';
+  if (gamesSection) gamesSection.hidden = !showGames;
+
+  const { visibleGames, visibleLines } = await loadVisibleLines();
+  if (requestId !== currentFilterRequestId) return;
 
   renderSummary(calcSummary(visibleGames));
 
@@ -264,16 +309,29 @@ function applyFilters() {
     .filter((row) => row.gp > 0);
 
   renderLeaderboard(leaderboardBody, sortPlayerRows(totals));
-  renderGames(visibleGames);
+  if (showGames) {
+    renderGames(visibleGames);
+  } else if (gamesBody) {
+    gamesBody.innerHTML = '';
+  }
 }
 
-function renderBoxScore(gameId) {
+async function refreshFilteredView() {
+  showStatsError('');
+
+  try {
+    await applyFilters();
+  } catch (err) {
+    showStatsError(`Could not load stats: ${err.message}`);
+  }
+}
+
+async function renderBoxScore(gameId) {
   const game = allGames.find((g) => String(g.id) === String(gameId));
   if (!game) return;
 
   const playerMap = new Map(allPlayers.map((p) => [p.id, p.name]));
-  const lines = allLines
-    .filter((line) => String(line.game_id) === String(gameId))
+  const lines = (await fetchPlayerLinesForGameIds([Number(gameId)]))
     .filter(didPlayerParticipate)
     .sort((a, b) => (b.goals + b.assists) - (a.goals + a.assists));
 
@@ -297,22 +355,20 @@ function renderBoxScore(gameId) {
 }
 
 async function loadStats() {
-  const [{ data: games, error: gamesErr }, { data: lines, error: linesErr }, { data: players, error: playersErr }] = await Promise.all([
+  const [{ data: games, error: gamesErr }, { data: players, error: playersErr }] = await Promise.all([
     supabase.from('games').select('*'),
-    supabase.from('player_game_stats').select('*'),
     supabase.from('players').select('*').order('name')
   ]);
 
-  if (gamesErr || linesErr || playersErr) {
-    const message = gamesErr?.message || linesErr?.message || playersErr?.message || 'Unknown data error.';
+  if (gamesErr || playersErr) {
+    const message = gamesErr?.message || playersErr?.message || 'Unknown data error.';
     throw new Error(message);
   }
 
   allGames = games || [];
-  allLines = lines || [];
   allPlayers = players || [];
   populateViewFilter();
-  applyFilters();
+  await refreshFilteredView();
 }
 
 async function deleteGame(gameId) {
@@ -345,11 +401,11 @@ document.querySelectorAll('.table-sort').forEach((button) => {
       playerSort.direction = 'desc';
     }
 
-    applyFilters();
+    refreshFilteredView();
   });
 });
 
-statsViewFilter?.addEventListener('change', applyFilters);
+statsViewFilter?.addEventListener('change', refreshFilteredView);
 
 gamesBody?.addEventListener('click', async (event) => {
   const viewBtn = event.target.closest('.game-view');
@@ -390,7 +446,7 @@ loginBtn?.addEventListener('click', async () => {
   }
 
   showAuthMessage('Logged in.');
-  refreshAuthUi();
+  await refreshAuthUi();
 });
 
 logoutBtn?.addEventListener('click', async () => {
@@ -400,7 +456,7 @@ logoutBtn?.addEventListener('click', async () => {
     return;
   }
   showAuthMessage('Logged out.');
-  refreshAuthUi();
+  await refreshAuthUi();
 });
 
 supabase.auth.onAuthStateChange(() => {
@@ -412,6 +468,6 @@ supabase.auth.onAuthStateChange(() => {
   try {
     await loadStats();
   } catch (err) {
-    document.getElementById('stats-error').textContent = `Could not load stats: ${err.message}`;
+    showStatsError(`Could not load stats: ${err.message}`);
   }
 })();
