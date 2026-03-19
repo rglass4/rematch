@@ -287,7 +287,7 @@ function renderBoxScore(gameId) {
         <td>${line.started_in_goal ? 'Yes' : ''}</td>
       </tr>`;
     })
-    .join('') || '<tr><td colspan="5">No active players recorded.</td></tr>';
+    .join('') || '<tr><td colspan="5">No player stats were saved for this game.</td></tr>';
 
   boxscoreModal.showModal();
 }
