@@ -11,6 +11,10 @@ function formatDate(dateInput) {
   return new Date(dateInput).toLocaleDateString();
 }
 
+function didPlayerParticipate(line) {
+  return Boolean(line) && (line.played_in_game !== false || line.goals > 0 || line.assists > 0 || line.started_in_goal);
+}
+
 function gameSortAsc(a, b) {
   const dateDiff = new Date(a.game_date) - new Date(b.game_date);
   if (dateDiff !== 0) return dateDiff;
@@ -176,7 +180,7 @@ function buildPlayerInGameRecords(lines, playersById, gamesById, eligiblePlayerI
     row.goals += line.goals;
     row.assists += line.assists;
     row.points = row.goals + row.assists;
-    if (line.played_in_game !== false) row.gp += 1;
+    if (didPlayerParticipate(line)) row.gp += 1;
 
     byPlayerNight.set(key, row);
   }
@@ -251,7 +255,7 @@ function buildPlayerInGameRecords(lines, playersById, gamesById, eligiblePlayerI
 
 function findLatestGameForPlayer(playerId, lines, gamesById) {
   const playerGames = lines
-    .filter((line) => line.player_id === playerId && line.played_in_game !== false)
+    .filter((line) => line.player_id === playerId && didPlayerParticipate(line))
     .map((line) => gamesById.get(line.game_id))
     .filter(Boolean)
     .sort(gameSortAsc);
@@ -277,7 +281,7 @@ function buildPlayerTotalsRecords(players, lines, gamesById, eligiblePlayerIds) 
 
     const row = totalsByPlayer.get(line.player_id);
     if (!row) continue;
-    if (line.played_in_game !== false) row.gp += 1;
+    if (didPlayerParticipate(line)) row.gp += 1;
     row.goals += line.goals;
     row.assists += line.assists;
     row.points = row.goals + row.assists;

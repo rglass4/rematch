@@ -24,8 +24,12 @@ function statCard(label, value) {
   return `<div class="stat"><span class="label">${label}</span><span class="value">${value}</span></div>`;
 }
 
+function didPlayerParticipate(line) {
+  return Boolean(line) && (line.played_in_game !== false || line.goals > 0 || line.assists > 0 || line.started_in_goal);
+}
+
 function computeTotals(lines, gamesById) {
-  const gpLines = lines.filter((line) => line.played_in_game !== false);
+  const gpLines = lines.filter(didPlayerParticipate);
   const goals = lines.reduce((sum, line) => sum + line.goals, 0);
   const assists = lines.reduce((sum, line) => sum + line.assists, 0);
   const points = goals + assists;
@@ -104,7 +108,7 @@ function renderChemistry(selectedPlayerId, sortedLines, linesByGameId, playersBy
     const sameGameLines = linesByGameId.get(line.game_id) || [];
     for (const teammateLine of sameGameLines) {
       if (teammateLine.player_id === selectedPlayerId) continue;
-      if (teammateLine.played_in_game === false) continue;
+      if (!didPlayerParticipate(teammateLine)) continue;
 
       const existing = shared.get(teammateLine.player_id) || {
         teammateId: teammateLine.player_id,
@@ -182,7 +186,7 @@ async function init() {
 
   const playerLines = allLines
     .filter((line) => line.player_id === playerId)
-    .filter((line) => line.played_in_game !== false || line.goals > 0 || line.assists > 0 || line.started_in_goal)
+    .filter(didPlayerParticipate)
     .sort((a, b) => {
       const aDate = new Date(gamesById.get(a.game_id)?.game_date || 0).getTime();
       const bDate = new Date(gamesById.get(b.game_id)?.game_date || 0).getTime();

@@ -231,13 +231,52 @@ function buildPlayerLines(gameId) {
 
 function cloneInsertableLines(lines, gameId) {
   return (lines || []).map((line) => ({
-    game_id: gameId,
+    game_id: gameId ?? Number(line.game_id),
     player_id: Number(line.player_id),
     goals: clampToZero(line.goals),
     assists: clampToZero(line.assists),
     started_in_goal: Boolean(line.started_in_goal),
     played_in_game: line.played_in_game !== false
   }));
+}
+
+async function syncPlayerLines(gameId, nextLines, previousLines = []) {
+  const preparedNextLines = cloneInsertableLines(nextLines, gameId);
+  const preparedPreviousLines = cloneInsertableLines(previousLines, gameId);
+
+  if (preparedNextLines.length > 0) {
+    const { error: upsertErr } = await supabase
+      .from('player_game_stats')
+      .upsert(preparedNextLines, { onConflict: 'game_id,player_id' });
+
+    if (upsertErr) throw upsertErr;
+  }
+
+  const nextPlayerIds = new Set(preparedNextLines.map((line) => line.player_id));
+  const removedPlayerIds = preparedPreviousLines
+    .map((line) => line.player_id)
+    .filter((playerId) => !nextPlayerIds.has(playerId));
+
+  if (removedPlayerIds.length > 0) {
+    const { error: deleteErr } = await supabase
+      .from('player_game_stats')
+      .delete()
+      .eq('game_id', gameId)
+      .in('player_id', removedPlayerIds);
+
+    if (deleteErr) throw deleteErr;
+  }
+
+  if (preparedNextLines.length === 0 && preparedPreviousLines.length > 0) {
+    const { error: deleteAllErr } = await supabase
+      .from('player_game_stats')
+      .delete()
+      .eq('game_id', gameId);
+
+    if (deleteAllErr) throw deleteAllErr;
+  }
+
+  return preparedNextLines;
 }
 
 function validate() {
@@ -368,36 +407,25 @@ form.addEventListener('submit', async (event) => {
       throw new Error('Please mark at least one player as played, or enter stats/GS for them.');
     }
 
-    if (editingGameId) {
-      const { error: deleteErr } = await supabase.from('player_game_stats').delete().eq('game_id', editingGameId);
-      if (deleteErr) throw deleteErr;
-    }
-
-    if (lines.length > 0) {
-      const { error: linesErr } = await supabase
-        .from('player_game_stats')
-        .insert(lines);
-      if (linesErr) throw linesErr;
-    }
+    const syncedLines = await syncPlayerLines(gameId, lines, editingGameId ? originalEditLines : []);
 
     originalEditGamePayload = { ...gamePayload };
-    originalEditLines = cloneInsertableLines(lines, gameId);
+    originalEditLines = cloneInsertableLines(syncedLines, gameId);
     showMessage(editingGameId ? 'Game updated. Redirecting...' : 'Game added. Redirecting...');
     setTimeout(() => {
       window.location.href = './index.html';
     }, 700);
   } catch (err) {
     if (editingGameId && originalEditGamePayload && originalEditLines) {
-      const { data: remainingLines } = await supabase
-        .from('player_game_stats')
-        .select('player_id')
-        .eq('game_id', editingGameId);
-
-      if ((remainingLines || []).length === 0 && backupGamePayload) {
+      if (backupGamePayload) {
         await supabase.from('games').update(backupGamePayload).eq('id', editingGameId);
-        if (backupLines.length > 0) {
-          await supabase.from('player_game_stats').insert(backupLines);
-        }
+      }
+
+      await supabase.from('player_game_stats').delete().eq('game_id', editingGameId);
+      if (backupLines.length > 0) {
+        await supabase
+          .from('player_game_stats')
+          .upsert(backupLines, { onConflict: 'game_id,player_id' });
       }
     } else if (createdGameId) {
       await supabase.from('player_game_stats').delete().eq('game_id', createdGameId);
