@@ -21,44 +21,49 @@ function gameSortAsc(a, b) {
   return a.id - b.id;
 }
 
-function gameContext(game) {
-  if (!game) return null;
-  return {
-    id: game.id,
-    game_date: game.game_date,
-    result: `${game.result} ${game.goals_for}-${game.goals_against}${game.overtime ? ' OT' : ''}`
-  };
-}
-
-function formatOccurrence(occurrence, holdersText) {
-  if (!occurrence) return '—';
-  const holderSuffix = holdersText ? ` · Holder(s): ${holdersText}` : '';
-  if (occurrence.description) return `${occurrence.description}${holderSuffix}`;
-
-  const segments = [formatDate(occurrence.game_date)];
-  if (occurrence.id != null) segments.push(`Game #${occurrence.id}`);
-  if (occurrence.result) segments.push(occurrence.result);
-  return `${segments.join(' · ')}${holderSuffix}`;
-}
-
 function formatValue(value, decimals = 2) {
   if (typeof value === 'number' && !Number.isInteger(value)) return value.toFixed(decimals);
   return value;
 }
 
-function renderRecordRows(tableBody, records, options = {}) {
-  const { includeHoldersInOccurrences = false } = options;
+function selectTopRows(rows, valueSelector, limit = 5, mode = 'max') {
+  if (!rows.length) return [];
 
+  const sorted = [...rows].sort((a, b) => {
+    const aValue = valueSelector(a);
+    const bValue = valueSelector(b);
+    if (aValue !== bValue) return mode === 'max' ? bValue - aValue : aValue - bValue;
+
+    const aDate = new Date(a.game_date || a.date || 0).getTime();
+    const bDate = new Date(b.game_date || b.date || 0).getTime();
+    if (aDate !== bDate) return aDate - bDate;
+
+    const aId = a.game_id ?? a.id ?? a.player_id ?? 0;
+    const bId = b.game_id ?? b.id ?? b.player_id ?? 0;
+    return aId - bId;
+  });
+
+  const topValue = valueSelector(sorted[0]);
+  const tiedForFirst = sorted.filter((row) => valueSelector(row) === topValue);
+  if (tiedForFirst.length > limit) return tiedForFirst;
+
+  return sorted.slice(0, limit);
+}
+
+function renderTopItems(items) {
+  if (!items.length) return '—';
+  return `<ol class="record-top-list">${items.map((item) => `<li>${item}</li>`).join('')}</ol>`;
+}
+
+function renderRecordRows(tableBody, records) {
   tableBody.innerHTML = '';
   for (const record of records) {
     const tr = document.createElement('tr');
-    const holdersText = includeHoldersInOccurrences ? (record.holders?.length ? record.holders.join(', ') : '—') : null;
 
     tr.innerHTML = `
       <td>${record.label}</td>
       <td>${formatValue(record.value)}</td>
-      <td>${formatOccurrence(record.firstOccurrence, holdersText)}</td>
-      <td>${formatOccurrence(record.lastOccurrence, holdersText)}</td>
+      <td>${renderTopItems(record.topItems || [])}</td>
     `;
     tableBody.appendChild(tr);
   }
@@ -67,151 +72,124 @@ function renderRecordRows(tableBody, records, options = {}) {
 function buildTeamRecords(games) {
   if (!games.length) return [];
 
-  const maxGoals = Math.max(...games.map((g) => g.goals_for));
-  const goalsOccurrences = games.filter((g) => g.goals_for === maxGoals).sort(gameSortAsc);
+  const marginRows = games.map((g) => ({ ...g, value: g.goals_for - g.goals_against }));
 
-  const maxMargin = Math.max(...games.map((g) => g.goals_for - g.goals_against));
-  const marginOccurrences = games
-    .filter((g) => g.goals_for - g.goals_against === maxMargin)
-    .sort(gameSortAsc);
-
+  const winRuns = [];
+  const lossRuns = [];
   const sorted = [...games].sort(gameSortAsc);
-  const streakRuns = [];
 
   let run = null;
   for (const game of sorted) {
     if (!run || run.result !== game.result) {
-      run = { result: game.result, count: 1, startGame: game, endGame: game };
-      streakRuns.push(run);
+      run = { result: game.result, count: 1, startGame: game, endGame: game, game_date: game.game_date, id: game.id };
+      if (game.result === 'W') winRuns.push(run);
+      if (game.result === 'L') lossRuns.push(run);
     } else {
       run.count += 1;
       run.endGame = game;
+      run.game_date = game.game_date;
+      run.id = game.id;
     }
   }
 
-  const maxWinStreak = Math.max(0, ...streakRuns.filter((r) => r.result === 'W').map((r) => r.count));
-  const maxLossStreak = Math.max(0, ...streakRuns.filter((r) => r.result === 'L').map((r) => r.count));
-
-  const winRuns = streakRuns.filter((r) => r.result === 'W' && r.count === maxWinStreak);
-  const lossRuns = streakRuns.filter((r) => r.result === 'L' && r.count === maxLossStreak);
-
-  const winFirst = winRuns[0] ? gameContext(winRuns[0].endGame) : null;
-  const winLast = winRuns.length > 1 ? gameContext(winRuns[winRuns.length - 1].endGame) : null;
-  const lossFirst = lossRuns[0] ? gameContext(lossRuns[0].endGame) : null;
-  const lossLast = lossRuns.length > 1 ? gameContext(lossRuns[lossRuns.length - 1].endGame) : null;
-
-  return [
+  const teamRecords = [
     {
       label: 'Most Goals For (Game)',
-      value: maxGoals,
-      holders: ['Team'],
-      firstOccurrence: gameContext(goalsOccurrences[0]),
-      lastOccurrence: goalsOccurrences.length > 1 ? gameContext(goalsOccurrences[goalsOccurrences.length - 1]) : null
+      rows: selectTopRows(games, (g) => g.goals_for),
+      value: Math.max(...games.map((g) => g.goals_for)),
+      mapItem: (g) => `${formatDate(g.game_date)} · ${g.result} ${g.goals_for}-${g.goals_against}${g.overtime ? ' OT' : ''}`
     },
     {
       label: 'Largest Margin of Victory',
-      value: maxMargin,
-      holders: ['Team'],
-      firstOccurrence: gameContext(marginOccurrences[0]),
-      lastOccurrence: marginOccurrences.length > 1 ? gameContext(marginOccurrences[marginOccurrences.length - 1]) : null
+      rows: selectTopRows(marginRows, (g) => g.value),
+      value: Math.max(...marginRows.map((g) => g.value)),
+      mapItem: (g) => `${formatDate(g.game_date)} · ${g.result} ${g.goals_for}-${g.goals_against}${g.overtime ? ' OT' : ''} (Margin ${g.value})`
     },
     {
       label: 'Longest Winning Streak',
-      value: maxWinStreak,
-      holders: ['Team'],
-      firstOccurrence: winFirst,
-      lastOccurrence: winLast
+      rows: selectTopRows(winRuns, (r) => r.count),
+      value: Math.max(0, ...winRuns.map((r) => r.count)),
+      mapItem: (r) => `${r.count} games · ${formatDate(r.startGame.game_date)} → ${formatDate(r.endGame.game_date)}`
     },
     {
       label: 'Longest Losing Streak',
-      value: maxLossStreak,
-      holders: ['Team'],
-      firstOccurrence: lossFirst,
-      lastOccurrence: lossLast
+      rows: selectTopRows(lossRuns, (r) => r.count),
+      value: Math.max(0, ...lossRuns.map((r) => r.count)),
+      mapItem: (r) => `${r.count} games · ${formatDate(r.startGame.game_date)} → ${formatDate(r.endGame.game_date)}`
     }
   ];
+
+  return teamRecords.map((record) => ({
+    label: record.label,
+    value: record.value,
+    topItems: record.rows.map(record.mapItem)
+  }));
 }
 
 function buildPlayerInGameRecords(lines, playersById, gamesById, eligiblePlayerIds) {
-  const eligibleLines = lines.filter((line) => eligiblePlayerIds.has(line.player_id));
-
-  const inGameRecords = [
-    { key: 'goals', label: 'Most Goals in a Game' },
-    { key: 'assists', label: 'Most Assists in a Game' },
-    { key: 'points', label: 'Most Points in a Game' }
-  ].map((metric) => {
-    const scoredLines = eligibleLines.map((line) => ({
+  const eligibleLines = lines
+    .filter((line) => eligiblePlayerIds.has(line.player_id))
+    .map((line) => ({
       ...line,
-      points: line.goals + line.assists
-    }));
-
-    const maxValue = Math.max(0, ...scoredLines.map((line) => line[metric.key] || 0));
-    const matching = scoredLines.filter((line) => (line[metric.key] || 0) === maxValue);
-    const holderNames = [...new Set(matching.map((line) => playersById.get(line.player_id)?.name).filter(Boolean))].sort();
-    const occurrences = matching
-      .map((line) => gamesById.get(line.game_id))
-      .filter(Boolean)
-      .sort(gameSortAsc);
-
-    return {
-      label: metric.label,
-      value: maxValue,
-      holders: holderNames,
-      firstOccurrence: gameContext(occurrences[0]),
-      lastOccurrence: occurrences.length > 1 ? gameContext(occurrences[occurrences.length - 1]) : null
-    };
-  });
+      points: line.goals + line.assists,
+      player_name: playersById.get(line.player_id)?.name || `Player #${line.player_id}`,
+      game_date: gamesById.get(line.game_id)?.game_date || null,
+      game: gamesById.get(line.game_id)
+    }))
+    .filter((line) => line.game_date);
 
   const byPlayerNight = new Map();
   for (const line of eligibleLines) {
-    const game = gamesById.get(line.game_id);
-    if (!game) continue;
-
-    const key = `${line.player_id}::${game.game_date}`;
+    const key = `${line.player_id}::${line.game_date}`;
     const row = byPlayerNight.get(key) || {
       player_id: line.player_id,
-      game_date: game.game_date,
+      player_name: line.player_name,
+      game_date: line.game_date,
       goals: 0,
       assists: 0,
       points: 0,
+      goalie_starts: 0,
       gp: 0
     };
 
     row.goals += line.goals;
     row.assists += line.assists;
     row.points = row.goals + row.assists;
+    if (line.started_in_goal) row.goalie_starts += 1;
     if (didPlayerParticipate(line)) row.gp += 1;
 
     byPlayerNight.set(key, row);
   }
 
   const nightRows = [...byPlayerNight.values()];
-  const sortNightRows = (a, b) => {
-    const dateDiff = new Date(a.game_date) - new Date(b.game_date);
-    if (dateDiff !== 0) return dateDiff;
-    return a.player_id - b.player_id;
-  };
 
-  const nightOccurrence = (row) => ({
-    game_date: row.game_date,
-    description: `${formatDate(row.game_date)} (Night)`
-  });
-
-  const nightTotalRecords = [
-    { key: 'goals', label: 'Most Goals in a Night' },
-    { key: 'assists', label: 'Most Assists in a Night' },
-    { key: 'points', label: 'Most Points in a Night' }
+  const inGameRecords = [
+    { key: 'goals', label: 'Most Goals in a Game' },
+    { key: 'assists', label: 'Most Assists in a Game' },
+    { key: 'points', label: 'Most Points in a Game' }
   ].map((metric) => {
-    const maxValue = Math.max(0, ...nightRows.map((row) => row[metric.key] || 0));
-    const matching = nightRows.filter((row) => (row[metric.key] || 0) === maxValue).sort(sortNightRows);
-    const holderNames = [...new Set(matching.map((row) => playersById.get(row.player_id)?.name).filter(Boolean))].sort();
-
+    const topRows = selectTopRows(eligibleLines, (line) => line[metric.key] || 0);
     return {
       label: metric.label,
-      value: maxValue,
-      holders: holderNames,
-      firstOccurrence: matching[0] ? nightOccurrence(matching[0]) : null,
-      lastOccurrence: matching.length > 1 ? nightOccurrence(matching[matching.length - 1]) : null
+      value: topRows.length ? topRows[0][metric.key] || 0 : 0,
+      topItems: topRows.map((line) => {
+        const game = line.game;
+        return `${line.player_name} · ${formatDate(line.game_date)} · ${game?.result || ''} ${game?.goals_for ?? '?'}-${game?.goals_against ?? '?'} (${line[metric.key] || 0})`;
+      })
+    };
+  });
+
+  const nightRecords = [
+    { key: 'goals', label: 'Most Goals in a Night' },
+    { key: 'assists', label: 'Most Assists in a Night' },
+    { key: 'points', label: 'Most Points in a Night' },
+    { key: 'goalie_starts', label: 'Most Goalie Starts in a Night' }
+  ].map((metric) => {
+    const topRows = selectTopRows(nightRows, (row) => row[metric.key] || 0);
+    return {
+      label: metric.label,
+      value: topRows.length ? topRows[0][metric.key] || 0 : 0,
+      topItems: topRows.map((row) => `${row.player_name} · ${formatDate(row.game_date)} (${row[metric.key] || 0})`)
     };
   });
 
@@ -220,49 +198,24 @@ function buildPlayerInGameRecords(lines, playersById, gamesById, eligiblePlayerI
     { key: 'assists', label: 'Most Assists per Game in a Night' },
     { key: 'points', label: 'Most Points per Game in a Night' }
   ].map((metric) => {
-    const eligibleNights = nightRows
+    const rows = nightRows
       .filter((row) => row.gp >= 5)
-      .map((row) => ({
-        ...row,
-        value: row.gp > 0 ? row[metric.key] / row.gp : 0
-      }));
+      .map((row) => ({ ...row, value: row.gp ? row[metric.key] / row.gp : 0 }));
 
-    if (!eligibleNights.length) {
-      return {
-        label: metric.label,
-        value: 'N/A',
-        holders: [],
-        firstOccurrence: null,
-        lastOccurrence: null
-      };
-    }
-
-    const maxValue = Math.max(...eligibleNights.map((row) => row.value));
-    const matching = eligibleNights.filter((row) => row.value === maxValue).sort(sortNightRows);
-    const holderNames = [...new Set(matching.map((row) => playersById.get(row.player_id)?.name).filter(Boolean))].sort();
-
+    const topRows = selectTopRows(rows, (row) => row.value);
     return {
       label: metric.label,
-      value: maxValue,
-      holders: holderNames,
-      firstOccurrence: nightOccurrence(matching[0]),
-      lastOccurrence: matching.length > 1 ? nightOccurrence(matching[matching.length - 1]) : null
+      value: topRows.length ? topRows[0].value : 'N/A',
+      topItems: topRows.length
+        ? topRows.map((row) => `${row.player_name} · ${formatDate(row.game_date)} (${row.value.toFixed(2)})`)
+        : []
     };
   });
 
-  return [...inGameRecords, ...nightTotalRecords, ...nightPerGameRecords];
+  return [...inGameRecords, ...nightRecords, ...nightPerGameRecords];
 }
 
-function findLatestGameForPlayer(playerId, lines, gamesById) {
-  const playerGames = lines
-    .filter((line) => line.player_id === playerId && didPlayerParticipate(line))
-    .map((line) => gamesById.get(line.game_id))
-    .filter(Boolean)
-    .sort(gameSortAsc);
-  return playerGames[playerGames.length - 1] || null;
-}
-
-function buildPlayerTotalsRecords(players, lines, gamesById, eligiblePlayerIds) {
+function buildPlayerTotalsRecords(players, lines, eligiblePlayerIds) {
   const eligiblePlayers = players.filter((p) => eligiblePlayerIds.has(p.id));
 
   const totals = eligiblePlayers.map((p) => ({
@@ -272,7 +225,11 @@ function buildPlayerTotalsRecords(players, lines, gamesById, eligiblePlayerIds) 
     goals: 0,
     assists: 0,
     points: 0,
-    goalie_starts: 0
+    goalie_starts: 0,
+    goals_per_game: 0,
+    assists_per_game: 0,
+    points_per_game: 0,
+    goalie_starts_per_game: 0
   }));
 
   const totalsByPlayer = new Map(totals.map((t) => [t.player_id, t]));
@@ -288,13 +245,25 @@ function buildPlayerTotalsRecords(players, lines, gamesById, eligiblePlayerIds) 
     if (line.started_in_goal) row.goalie_starts += 1;
   }
 
+  for (const row of totals) {
+    row.goals_per_game = row.gp > 0 ? row.goals / row.gp : 0;
+    row.assists_per_game = row.gp > 0 ? row.assists / row.gp : 0;
+    row.points_per_game = row.gp > 0 ? row.points / row.gp : 0;
+    row.goalie_starts_per_game = row.gp > 0 ? row.goalie_starts / row.gp : 0;
+  }
+
   const metrics = [
     { key: 'gp', label: 'Most Games Played', mode: 'max', eligible: (row) => row.gp > 0 },
     { key: 'goals', label: 'Most Goals', mode: 'max', eligible: (row) => row.gp > 0 },
     { key: 'assists', label: 'Most Assists', mode: 'max', eligible: (row) => row.gp > 0 },
     { key: 'points', label: 'Most Points', mode: 'max', eligible: (row) => row.gp > 0 },
     { key: 'goalie_starts', label: 'Most Goalie Starts', mode: 'max', eligible: (row) => row.goalie_starts > 0 },
-    { key: 'goalie_starts', label: 'Fewest Goalie Starts', mode: 'min', eligible: (row) => row.goalie_starts > 0 }
+    { key: 'goalie_starts', label: 'Fewest Goalie Starts', mode: 'min', eligible: (row) => row.goalie_starts > 0 },
+    { key: 'goals_per_game', label: 'Most Goals Per Game', mode: 'max', eligible: (row) => row.gp > 0 },
+    { key: 'assists_per_game', label: 'Most Assists Per Game', mode: 'max', eligible: (row) => row.gp > 0 },
+    { key: 'points_per_game', label: 'Most Points Per Game', mode: 'max', eligible: (row) => row.gp > 0 },
+    { key: 'goalie_starts_per_game', label: 'Most Goalie Starts Per Game', mode: 'max', eligible: (row) => row.goalie_starts > 0 },
+    { key: 'goalie_starts_per_game', label: 'Fewest Goalie Starts Per Game', mode: 'min', eligible: (row) => row.goalie_starts > 0 }
   ];
 
   return metrics.map((metric) => {
@@ -303,27 +272,15 @@ function buildPlayerTotalsRecords(players, lines, gamesById, eligiblePlayerIds) 
       return {
         label: metric.label,
         value: 'N/A',
-        holders: [],
-        firstOccurrence: null,
-        lastOccurrence: null
+        topItems: []
       };
     }
 
-    const values = eligibleRows.map((row) => row[metric.key]);
-    const bestValue = metric.mode === 'max' ? Math.max(...values) : Math.min(...values);
-    const holders = eligibleRows.filter((row) => row[metric.key] === bestValue).sort((a, b) => a.name.localeCompare(b.name));
-
-    const holderGames = holders
-      .map((holder) => findLatestGameForPlayer(holder.player_id, lines, gamesById))
-      .filter(Boolean)
-      .sort(gameSortAsc);
-
+    const topRows = selectTopRows(eligibleRows, (row) => row[metric.key], 5, metric.mode);
     return {
       label: metric.label,
-      value: bestValue,
-      holders: holders.map((holder) => holder.name),
-      firstOccurrence: holderGames[0] ? gameContext(holderGames[0]) : null,
-      lastOccurrence: holderGames.length > 1 ? gameContext(holderGames[holderGames.length - 1]) : null
+      value: topRows[0][metric.key],
+      topItems: topRows.map((row) => `${row.name} (${formatValue(row[metric.key])})`)
     };
   });
 }
@@ -348,12 +305,8 @@ async function loadRecords() {
   const eligiblePlayerIds = new Set(eligiblePlayers.map((p) => p.id));
 
   renderRecordRows(teamBody, buildTeamRecords(allGames));
-  renderRecordRows(playerGameBody, buildPlayerInGameRecords(allLines, playersById, gamesById, eligiblePlayerIds), {
-    includeHoldersInOccurrences: true
-  });
-  renderRecordRows(playerTotalBody, buildPlayerTotalsRecords(allPlayers, allLines, gamesById, eligiblePlayerIds), {
-    includeHoldersInOccurrences: true
-  });
+  renderRecordRows(playerGameBody, buildPlayerInGameRecords(allLines, playersById, gamesById, eligiblePlayerIds));
+  renderRecordRows(playerTotalBody, buildPlayerTotalsRecords(allPlayers, allLines, eligiblePlayerIds));
 }
 
 (async function init() {
