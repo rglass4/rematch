@@ -26,6 +26,24 @@ function formatValue(value, decimals = 2) {
   return value;
 }
 
+async function fetchAllRows(table, { pageSize = 200, orderBy = 'id' } = {}) {
+  const allRows = [];
+  let from = 0;
+
+  while (true) {
+    const to = from + pageSize - 1;
+    const { data, error } = await supabase.from(table).select('*').order(orderBy, { ascending: true }).range(from, to);
+    if (error) throw error;
+
+    const rows = data || [];
+    allRows.push(...rows);
+    if (rows.length < pageSize) break;
+    from += pageSize;
+  }
+
+  return allRows;
+}
+
 function selectTopRows(rows, valueSelector, limit = 5, mode = 'max') {
   if (!rows.length) return [];
 
@@ -286,19 +304,11 @@ function buildPlayerTotalsRecords(players, lines, eligiblePlayerIds) {
 }
 
 async function loadRecords() {
-  const [{ data: games, error: gamesErr }, { data: lines, error: linesErr }, { data: players, error: playersErr }] = await Promise.all([
-    supabase.from('games').select('*'),
-    supabase.from('player_game_stats').select('*'),
-    supabase.from('players').select('*').order('name')
+  const [allGames, allLines, allPlayers] = await Promise.all([
+    fetchAllRows('games'),
+    fetchAllRows('player_game_stats'),
+    fetchAllRows('players')
   ]);
-
-  if (gamesErr || linesErr || playersErr) {
-    throw new Error(gamesErr?.message || linesErr?.message || playersErr?.message || 'Could not load records data.');
-  }
-
-  const allGames = games || [];
-  const allLines = lines || [];
-  const allPlayers = players || [];
   const playersById = new Map(allPlayers.map((p) => [p.id, p]));
   const gamesById = new Map(allGames.map((g) => [g.id, g]));
   const eligiblePlayers = allPlayers.filter((p) => !SPECIAL_PLAYER_NAMES.has(p.name));
