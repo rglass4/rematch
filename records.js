@@ -2,6 +2,7 @@ import { supabase } from './supabaseClient.js';
 
 const messageEl = document.getElementById('records-message');
 const teamBody = document.getElementById('team-records-body');
+const teamDayBody = document.getElementById('team-day-records-body');
 const playerGameBody = document.getElementById('player-game-records-body');
 const playerTotalBody = document.getElementById('player-total-records-body');
 
@@ -142,6 +143,70 @@ function buildTeamRecords(games) {
     value: record.value,
     topItems: record.rows.map(record.mapItem)
   }));
+}
+
+function buildTeamDayRecords(games) {
+  if (!games.length) return [];
+
+  const byDate = new Map();
+  for (const game of games) {
+    const key = game.game_date;
+    const row = byDate.get(key) || {
+      game_date: key,
+      games: 0,
+      wins: 0,
+      losses: 0,
+      overtime_games: 0,
+      goals_for: 0,
+      goals_against: 0
+    };
+
+    row.games += 1;
+    if (game.result === 'W') row.wins += 1;
+    if (game.result === 'L') row.losses += 1;
+    if (game.overtime) row.overtime_games += 1;
+    row.goals_for += game.goals_for;
+    row.goals_against += game.goals_against;
+
+    byDate.set(key, row);
+  }
+
+  const dayRows = [...byDate.values()].map((row) => ({
+    ...row,
+    winning_percentage: row.games ? row.wins / row.games : 0,
+    goals_for_per_game: row.games ? row.goals_for / row.games : 0,
+    goals_against_per_game: row.games ? row.goals_against / row.games : 0,
+    goal_diff: row.goals_for - row.goals_against
+  }));
+
+  const dayMetrics = [
+    { key: 'wins', label: 'Most Wins', mode: 'max' },
+    { key: 'losses', label: 'Most Losses', mode: 'max' },
+    { key: 'winning_percentage', label: 'Best Winning Percentage', mode: 'max', decimals: 3 },
+    { key: 'overtime_games', label: 'Most Overtime Games', mode: 'max' },
+    { key: 'goals_for', label: 'Most Goals For', mode: 'max' },
+    { key: 'goals_for', label: 'Least Goals For', mode: 'min' },
+    { key: 'goals_against', label: 'Most Goals Against', mode: 'max' },
+    { key: 'goals_against', label: 'Least Goals Against', mode: 'min' },
+    { key: 'goals_for_per_game', label: 'Most Goals For/Game', mode: 'max' },
+    { key: 'goals_for_per_game', label: 'Least Goals For/Game', mode: 'min' },
+    { key: 'goals_against_per_game', label: 'Least Goals Against/Game', mode: 'min' },
+    { key: 'goals_against_per_game', label: 'Most Goals Against/Game', mode: 'max' },
+    { key: 'goal_diff', label: 'Best Goal Diff', mode: 'max' },
+    { key: 'goal_diff', label: 'Worst Goal Diff', mode: 'min' }
+  ];
+
+  return dayMetrics.map((metric) => {
+    const topRows = selectTopRows(dayRows, (row) => row[metric.key], 5, metric.mode);
+    return {
+      label: metric.label,
+      value: topRows.length ? formatValue(topRows[0][metric.key], metric.decimals ?? 2) : 'N/A',
+      topItems: topRows.map((row) => {
+        const value = formatValue(row[metric.key], metric.decimals ?? 2);
+        return `${formatDate(row.game_date)} · ${value} (${row.wins}-${row.losses}, GF ${row.goals_for}, GA ${row.goals_against}, GP ${row.games})`;
+      })
+    };
+  });
 }
 
 function buildPlayerInGameRecords(lines, playersById, gamesById, eligiblePlayerIds) {
@@ -315,6 +380,7 @@ async function loadRecords() {
   const eligiblePlayerIds = new Set(eligiblePlayers.map((p) => p.id));
 
   renderRecordRows(teamBody, buildTeamRecords(allGames));
+  renderRecordRows(teamDayBody, buildTeamDayRecords(allGames));
   renderRecordRows(playerGameBody, buildPlayerInGameRecords(allLines, playersById, gamesById, eligiblePlayerIds));
   renderRecordRows(playerTotalBody, buildPlayerTotalsRecords(allPlayers, allLines, eligiblePlayerIds));
 }

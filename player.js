@@ -81,6 +81,32 @@ async function fetchRowsByIds(table, idColumn, ids) {
   return rows;
 }
 
+async function fetchAllRowsByIds(table, idColumn, ids, orderColumn = 'id') {
+  const uniqueIds = [...new Set(ids)].filter((id) => id != null);
+  if (!uniqueIds.length) return [];
+
+  const chunks = [];
+  for (let i = 0; i < uniqueIds.length; i += QUERY_PAGE_SIZE) {
+    chunks.push(uniqueIds.slice(i, i + QUERY_PAGE_SIZE));
+  }
+
+  const rows = [];
+  for (const chunk of chunks) {
+    let from = 0;
+    while (true) {
+      const { data, error } = await supabase.from(table).select('*').in(idColumn, chunk).order(orderColumn, { ascending: true }).range(from, from + QUERY_PAGE_SIZE - 1);
+      if (error) throw error;
+
+      const batch = data || [];
+      rows.push(...batch);
+      if (batch.length < QUERY_PAGE_SIZE) break;
+      from += QUERY_PAGE_SIZE;
+    }
+  }
+
+  return rows;
+}
+
 function computeTotals(lines, gamesById) {
   const gpLines = lines.filter(didPlayerParticipate);
   const goals = lines.reduce((sum, line) => sum + line.goals, 0);
@@ -273,7 +299,7 @@ async function init() {
   try {
     [gameRows, chemistryLines] = await Promise.all([
       fetchRowsByIds('games', 'id', gameIds),
-      fetchRowsByIds('player_game_stats', 'game_id', gameIds)
+      fetchAllRowsByIds('player_game_stats', 'game_id', gameIds)
     ]);
   } catch (err) {
     showMessage(err?.message || 'Could not load player profile data.', true);
