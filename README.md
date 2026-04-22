@@ -69,6 +69,7 @@ create table if not exists player_game_stats (
   assists integer not null default 0 check (assists >= 0),
   started_in_goal boolean not null default false,
   played_in_game boolean not null default true,
+  host boolean not null default false,
   created_at timestamptz not null default now(),
   unique (game_id, player_id)
 );
@@ -145,6 +146,13 @@ create policy "authenticated can insert players"
 on players for insert
 to authenticated
 with check (true);
+```
+
+If your project already has data, run this migration before using the Host flag:
+
+```sql
+alter table player_game_stats
+  add column if not exists host boolean not null default false;
 ```
 
 With RLS enabled, anon access works only for actions explicitly allowed by policies above.
