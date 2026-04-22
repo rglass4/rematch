@@ -37,6 +37,13 @@ let isAuthed = false;
 let playerSort = { key: 'points', direction: 'desc' };
 const missingElementWarnings = new Set();
 const PLAYER_LINES_PAGE_SIZE = 500;
+const HOST_ROTATION = new Map([
+  ['Bobs', 'Mac'],
+  ['Mac', 'TDot'],
+  ['TDot', 'Joe'],
+  ['Joe', 'Pton'],
+  ['Pton', 'Bobs']
+]);
 let currentVisibleLines = [];
 let currentFilterRequestId = 0;
 
@@ -140,7 +147,8 @@ function calcPlayerTotals(players, lines) {
     assists: 0,
     points: 0,
     goalie_starts: 0,
-    ppg: 0
+    ppg: 0,
+    hosted: false
   }));
 
   const map = new Map(totals.map((t) => [t.player_id, t]));
@@ -154,6 +162,7 @@ function calcPlayerTotals(players, lines) {
     t.points = t.goals + t.assists;
     t.ppg = t.gp ? t.points / t.gp : 0;
     if (line.started_in_goal) t.goalie_starts += 1;
+    if (line.host) t.hosted = true;
   }
 
   return totals;
@@ -173,6 +182,21 @@ function calculatePpg(row) {
   return (row.ppg || 0).toFixed(2);
 }
 
+function getCurrentHostName(lines, gamesById) {
+  const hostedLines = (lines || []).filter((line) => line.host);
+  if (!hostedLines.length) return null;
+
+  hostedLines.sort((a, b) => {
+    const gameA = gamesById.get(a.game_id);
+    const gameB = gamesById.get(b.game_id);
+    const dateDiff = new Date(gameB?.game_date || 0) - new Date(gameA?.game_date || 0);
+    if (dateDiff !== 0) return dateDiff;
+    return Number(gameB?.id || 0) - Number(gameA?.id || 0);
+  });
+
+  const latestHostLine = hostedLines[0];
+  return allPlayers.find((player) => player.id === latestHostLine.player_id)?.name || null;
+}
 
 function renderSummary(summary) {
   if (!summaryIds.games || !summaryIds.wl || !summaryIds.winPct || !summaryIds.streak || !summaryIds.ot || !summaryIds.gf || !summaryIds.ga || !summaryIds.gfPerGame || !summaryIds.gaPerGame || !summaryIds.gd) return;
@@ -188,7 +212,7 @@ function renderSummary(summary) {
   summaryIds.gd.textContent = summary.gd;
 }
 
-function renderLeaderboard(tableBody, rows) {
+function renderLeaderboard(tableBody, rows, { showHostText = false, nextHostName = null } = {}) {
   const resolvedTableBody = tableBody || getRequiredElementById('player-stats-body');
   if (!resolvedTableBody) return;
 
@@ -199,7 +223,7 @@ function renderLeaderboard(tableBody, rows) {
       <td>
         <div class="leaderboard-player-cell">
           <img class="leaderboard-player-avatar" src="img/${row.player_id}.png" alt="${row.name}" width="32" height="32" />
-          <a class="player-profile-link" href="./player.html?id=${encodeURIComponent(row.player_id)}">${row.name}</a>
+          <a class="player-profile-link" href="./player.html?id=${encodeURIComponent(row.player_id)}">${row.name}${nextHostName === row.name ? ' *' : ''}${showHostText && row.hosted ? ' (Host)' : ''}</a>
         </div>
       </td>
       <td>${row.gp}</td>
@@ -308,7 +332,14 @@ async function applyFilters() {
   const totals = calcPlayerTotals(allPlayers, visibleLines)
     .filter((row) => row.gp > 0);
 
-  renderLeaderboard(leaderboardBody, sortPlayerRows(totals));
+  const gamesById = new Map(visibleGames.map((game) => [game.id, game]));
+  const currentHostName = getCurrentHostName(visibleLines, gamesById);
+  const nextHostName = currentHostName ? (HOST_ROTATION.get(currentHostName) || null) : null;
+
+  renderLeaderboard(leaderboardBody, sortPlayerRows(totals), {
+    showHostText: selectedValue !== 'total',
+    nextHostName
+  });
   if (showGames) {
     renderGames(visibleGames);
   } else if (gamesBody) {
@@ -341,8 +372,9 @@ async function renderBoxScore(gameId) {
   boxscoreBody.innerHTML = lines
     .map((line) => {
       const name = playerMap.get(line.player_id) || `Player #${line.player_id}`;
+      const displayName = `${name}${line.host ? ' (Host)' : ''}`;
       return `<tr>
-        <td>${name}</td>
+        <td>${displayName}</td>
         <td>${line.goals}</td>
         <td>${line.assists}</td>
         <td>${line.goals + line.assists}</td>

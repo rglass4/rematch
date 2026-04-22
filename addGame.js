@@ -11,6 +11,7 @@ const titleEl = document.getElementById('page-title');
 const SPECIAL_PLAYERS = new Set(['4th Man', '5th Man']);
 const EASTERN_TIMEZONE = 'America/New_York';
 let previousPlayedByPlayer = new Map();
+let previousHostByPlayer = new Map();
 let editingGameId = null;
 let latestGameDateValue = '';
 let originalEditGamePayload = null;
@@ -114,6 +115,7 @@ async function checkAuth() {
 
 function rowTemplate(player) {
   const played = previousPlayedByPlayer.get(player.id) ?? false;
+  const host = previousHostByPlayer.get(player.id) ?? false;
   return `
     <div class="player-row" data-player-id="${player.id}">
       <div>${player.name}</div>
@@ -129,6 +131,7 @@ function rowTemplate(player) {
       </div>
       <div class="player-flags">
         <label><input type="checkbox" class="played" ${played ? 'checked' : ''} /> Played</label>
+        <label><input type="checkbox" class="host" ${host ? 'checked' : ''} /> Host</label>
         <label><input type="checkbox" class="goalie-start" /> GS</label>
       </div>
     </div>
@@ -162,6 +165,8 @@ function setPlayerRowsFromLines(lines) {
     row.querySelector('.assists').value = String(clampToZero(line.assists));
     row.querySelector('.played').checked = line.played_in_game !== false;
     row.querySelector('.goalie-start').checked = Boolean(line.started_in_goal);
+    const hostInput = row.querySelector('.host');
+    if (hostInput) hostInput.checked = Boolean(line.host);
     updatePlayedRowHighlight(row);
   }
 }
@@ -179,11 +184,12 @@ async function loadPreviousPlayedMap() {
 
   const { data: lines, error: linesError } = await supabase
     .from('player_game_stats')
-    .select('player_id, played_in_game')
+    .select('player_id, played_in_game, host')
     .eq('game_id', latestGame.id);
 
   if (linesError) return;
   previousPlayedByPlayer = new Map(lines.map((line) => [line.player_id, line.played_in_game !== false]));
+  previousHostByPlayer = new Map(lines.map((line) => [line.player_id, Boolean(line.host)]));
 }
 
 async function loadPlayers() {
@@ -211,17 +217,19 @@ function buildPlayerLines(gameId) {
       const goals = clampToZero(row.querySelector('.goals').value);
       const assists = clampToZero(row.querySelector('.assists').value);
       const started = row.querySelector('.goalie-start').checked;
-      const played = row.querySelector('.played').checked || goals > 0 || assists > 0 || started;
+      const host = row.querySelector('.host')?.checked || false;
+      const played = row.querySelector('.played').checked || goals > 0 || assists > 0 || started || host;
       return {
         game_id: gameId,
         player_id: Number(row.dataset.playerId),
         goals,
         assists,
         started_in_goal: started,
-        played_in_game: played
+        played_in_game: played,
+        host
       };
     })
-    .filter((r) => r.played_in_game || r.goals > 0 || r.assists > 0 || r.started_in_goal)
+    .filter((r) => r.played_in_game || r.goals > 0 || r.assists > 0 || r.started_in_goal || r.host)
     .forEach((line) => {
       lineByPlayerId.set(line.player_id, line);
     });
@@ -236,7 +244,8 @@ function cloneInsertableLines(lines, gameId) {
     goals: clampToZero(line.goals),
     assists: clampToZero(line.assists),
     started_in_goal: Boolean(line.started_in_goal),
-    played_in_game: line.played_in_game !== false
+    played_in_game: line.played_in_game !== false,
+    host: Boolean(line.host)
   }));
 }
 
@@ -286,6 +295,7 @@ function validate() {
   const ga = clampToZero(document.getElementById('goals-against').value);
   const rows = [...document.querySelectorAll('.player-row[data-player-id]')];
   const goalieStarts = rows.reduce((total, row) => total + (row.querySelector('.goalie-start').checked ? 1 : 0), 0);
+  const hostCount = rows.reduce((total, row) => total + (row.querySelector('.host')?.checked ? 1 : 0), 0);
   const totalPlayerGoals = rows.reduce((total, row) => total + clampToZero(row.querySelector('.goals').value), 0);
 
   if (!date) {
@@ -298,6 +308,10 @@ function validate() {
 
   if (goalieStarts !== 1) {
     throw new Error('Please select exactly one GS (goalie start).');
+  }
+
+  if (hostCount !== 1) {
+    throw new Error('Please select exactly one Host.');
   }
 
   if (gf === ga) {
@@ -359,7 +373,7 @@ form.addEventListener('change', (event) => {
     if (row) updatePlayedRowHighlight(row);
   }
 
-  const playerInput = event.target.closest('.goals, .assists, .goalie-start');
+  const playerInput = event.target.closest('.goals, .assists, .goalie-start, .host');
   if (playerInput) {
     const row = playerInput.closest('.player-row[data-player-id]');
     if (row) normalizePlayedState(row);
