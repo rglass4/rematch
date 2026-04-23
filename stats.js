@@ -39,10 +39,10 @@ const missingElementWarnings = new Set();
 const PLAYER_LINES_PAGE_SIZE = 500;
 const HOST_ROTATION = new Map([
   ['Bobs', 'Mac'],
-  ['Mac', 'TDot'],
+  ['Mac', 'Pton'],
+  ['Pton', 'TDot'],
   ['TDot', 'Joe'],
-  ['Joe', 'Pton'],
-  ['Pton', 'Bobs']
+  ['Joe', 'Bobs']
 ]);
 let currentVisibleLines = [];
 let currentFilterRequestId = 0;
